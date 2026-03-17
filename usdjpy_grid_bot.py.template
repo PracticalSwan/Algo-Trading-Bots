@@ -1,0 +1,60 @@
+import MetaTrader5 as mt5
+from forex_grid_engine import run_forex_grid_bot
+
+CONFIG = {
+    "LOGIN": YOUR_MT5_ACCOUNT_NUMBER,          # Replace with your MT5 account number
+    "PASSWORD": "YOUR_MT5_PASSWORD",           # Replace with your MT5 password
+    "SERVER": "Exness-MT5Trial8",              # Replace with your broker server name (check MT5 terminal)
+    "SYMBOL": "USDJPYm",
+    "MAGIC": 20250312,
+    "FIXED_START_LOT": 0.01,
+    "LOT_MULTIPLIER": 1.10,
+    "MAX_LOT": 0.035,
+    "MAX_LEVELS": 5,
+    "BASE_BASKET_TP_USD": 1.20,
+    "TP_PER_LEVEL_USD": 0.19,
+    "DAILY_MAX_LOSS_USD": 2.20,
+    "MIN_EQUITY_STOP": 30.00,
+    "CHECK_INTERVAL": 8,
+    "COOLDOWN_AFTER_CLOSE": 35,
+    "ATR_TIMEFRAME": mt5.TIMEFRAME_M5,
+    "ATR_PERIOD": 14,
+    "ATR_BARS": 180,
+    "GRID_ATR_MULTIPLIER": 1.25,
+    "MIN_GRID_STEP_PIPS": 7.5,
+    "MAX_GRID_STEP_PIPS": 18.0,
+    "MAX_SPREAD_PIPS": 1.9,
+    "MAX_SPREAD_ATR_RATIO": 0.20,
+    "TREND_TIMEFRAME": mt5.TIMEFRAME_M15,
+    "TREND_BARS": 180,
+    "TREND_PAUSE_ADX": 28.0,
+    "GLOBAL_MAX_ACCOUNT_POSITIONS": 16,
+    "GLOBAL_POSITION_RESERVE_FOR_EXPANSION": 4,
+    "GLOBAL_MAX_FLOATING_DRAWDOWN_USD": 8.50,
+    "GLOBAL_MIN_FREE_MARGIN_USD": 10.00,
+    "GLOBAL_MIN_MARGIN_LEVEL_PCT": 250.0,
+    "GLOBAL_SOFT_EQUITY_STOP": 29.00,
+    "GLOBAL_COOLDOWN_AFTER_SAFETY": 300,
+    "AUTO_GROWTH_ENABLED": True,
+    "GROWTH_BASE_EQUITY": 50.0,
+    "GROWTH_MAX_FACTOR": 3.0,
+    "GROWTH_LOT_EXPONENT": 0.66,
+    "GROWTH_TP_EXPONENT": 0.85,
+    "GROWTH_RISK_EXPONENT": 0.60,
+    "GROWTH_EQUITY_LOCK_RATIO": 0.35,
+    "BOT_TITLE": "USDJPY BALANCED GRID BOT v4.0 (ASIA + PARALLEL SAFETY)",
+    "LOG_PREFIX": "usdjpy_grid_bot",
+    "LOGGER_NAME": "USDJPY_GridBot",
+    "START_BUY_COMMENT": "USDJPY_Start_BUY",
+    "START_SELL_COMMENT": "USDJPY_Start_SELL",
+    "GRID_BUY_COMMENT": "USDJPY_Grid_BUY",
+    "GRID_SELL_COMMENT": "USDJPY_Grid_SELL",
+    "PRICE_DIGITS": 3,
+}
+
+if __name__ == "__main__":
+    try:
+        run_forex_grid_bot(CONFIG)
+    except KeyboardInterrupt:
+        print("\nBot stopped by user")
+        mt5.shutdown()

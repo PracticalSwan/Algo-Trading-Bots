@@ -1,0 +1,678 @@
+import MetaTrader5 as mt5
+import time
+import logging
+from datetime import datetime, timezone, timedelta
+import os
+from urllib.request import Request, urlopen
+import xml.etree.ElementTree as ET
+
+import pandas as pd
+import numpy as np
+
+# ====================== CONFIG =========================
+LOGIN = YOUR_MT5_ACCOUNT_NUMBER
+PASSWORD = "YOUR_MT5_PASSWORD"
+SERVER = "Exness-MT5Trial7"
+SYMBOL = "USTECm"
+MAGIC = 2026031301
+
+FIXED_START_LOT = 0.01
+LOT_MULTIPLIER = 1.28
+MAX_LOT = 0.035
+MAX_LEVELS = 5
+
+BASE_BASKET_TP_USD = 1.90
+TP_PER_LEVEL_USD = 0.30
+DAILY_MAX_LOSS_USD = 3.20
+MIN_EQUITY_STOP = 30.50
+CHECK_INTERVAL = 8
+COOLDOWN_AFTER_CLOSE = 35
+
+GLOBAL_MAX_ACCOUNT_POSITIONS = 16
+GLOBAL_POSITION_RESERVE_FOR_EXPANSION = 4
+GLOBAL_MAX_FLOATING_DRAWDOWN_USD = 8.50
+GLOBAL_MIN_FREE_MARGIN_USD = 10.00
+GLOBAL_MIN_MARGIN_LEVEL_PCT = 250.0
+GLOBAL_SOFT_EQUITY_STOP = 29.00
+GLOBAL_COOLDOWN_AFTER_SAFETY = 300
+
+AUTO_GROWTH_ENABLED = True
+GROWTH_BASE_EQUITY = 50.0
+GROWTH_MAX_FACTOR = 3.0
+GROWTH_LOT_EXPONENT = 0.65
+GROWTH_TP_EXPONENT = 0.85
+GROWTH_RISK_EXPONENT = 0.60
+GROWTH_EQUITY_LOCK_RATIO = 0.35
+
+ATR_TIMEFRAME = mt5.TIMEFRAME_M5
+ATR_PERIOD = 14
+ATR_BARS = 140
+GRID_ATR_MULTIPLIER = 0.85
+MIN_GRID_STEP_PRICE = 15.0
+MAX_GRID_STEP_PRICE = 60.0
+MAX_SPREAD_ATR_RATIO = 0.22
+
+TREND_TIMEFRAME = mt5.TIMEFRAME_M15
+TREND_BARS = 180
+TREND_PAUSE_ADX = 30.0
+
+NEWS_FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+NEWS_REFRESH_MINUTES = 10
+NEWS_COUNTRIES = {"USD"}
+NEWS_IMPACTS = {"High"}
+NEWS_BLOCK_BEFORE_MIN = 45
+NEWS_BLOCK_AFTER_MIN = 30
+NEWS_TIME_OFFSET_HOURS = 0
+CLOSE_BEFORE_NEWS = True
+
+
+def is_trading_allowed():
+    now = datetime.now(timezone.utc)
+    return now.weekday() < 5
+
+
+# ====================== LOGGING SETUP ======================
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(SCRIPT_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+log_filename = os.path.join(LOG_DIR, f"nas100_grid_bot_{datetime.now(timezone.utc).strftime('%Y%m%d')}.log")
+
+logger = logging.getLogger("NAS100_GridBot")
+logger.setLevel(logging.DEBUG)
+logger.handlers.clear()
+
+file_handler = logging.FileHandler(log_filename, encoding="utf-8")
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+logger.addHandler(file_handler)
+
+_last_skip_reason = None
+_news_cache = []
+_last_news_sync_ts = 0.0
+_last_news_error = ""
+
+
+def write_log(message, level="info"):
+    getattr(logger, level, logger.info)(message)
+
+
+def log_skip_once(reason):
+    global _last_skip_reason
+    if reason != _last_skip_reason:
+        _last_skip_reason = reason
+        logger.info(f"SKIP: {reason}")
+
+
+def log_trade(action, details):
+    logger.info(f"TRADE {action} | {details}")
+
+
+def log_error(message):
+    logger.error(message)
+
+
+SUCCESS_RETCODES = {mt5.TRADE_RETCODE_DONE}
+if hasattr(mt5, "TRADE_RETCODE_DONE_PARTIAL"):
+    SUCCESS_RETCODES.add(mt5.TRADE_RETCODE_DONE_PARTIAL)
+
+
+def is_trade_success(result):
+    return bool(result and result.retcode in SUCCESS_RETCODES)
+
+
+def pick_filling_mode(sym_info):
+    flags = sym_info.filling_mode if sym_info else 0
+    if flags & 2:  # SYMBOL_FILLING_IOC
+        return mt5.ORDER_FILLING_IOC
+    if flags & 1:  # SYMBOL_FILLING_FOK
+        return mt5.ORDER_FILLING_FOK
+    return mt5.ORDER_FILLING_RETURN
+
+
+def lot_digits(step):
+    step_str = f"{step:.8f}".rstrip("0")
+    if "." not in step_str:
+        return 0
+    return len(step_str.split(".")[1])
+
+
+def normalize_lot(raw_lot, sym_info):
+    step = sym_info.volume_step if sym_info and sym_info.volume_step > 0 else 0.01
+    min_lot = sym_info.volume_min if sym_info else 0.01
+    max_lot = sym_info.volume_max if sym_info else raw_lot
+
+    lot = max(min_lot, min(max_lot, raw_lot))
+    lot = round(lot / step) * step
+    lot = max(min_lot, min(max_lot, lot))
+    return round(lot, lot_digits(step))
+
+
+def get_data(symbol, timeframe, bars):
+    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, bars)
+    if rates is None or len(rates) < 40:
+        return None
+    return pd.DataFrame(rates)
+
+
+def calculate_atr(df, period=14):
+    high_low = df["high"] - df["low"]
+    high_close = np.abs(df["high"] - df["close"].shift())
+    low_close = np.abs(df["low"] - df["close"].shift())
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    return tr.rolling(window=period).mean()
+
+
+def calculate_adx(df, period=14):
+    plus_dm = np.where(
+        (df["high"] - df["high"].shift(1)) > (df["low"].shift(1) - df["low"]),
+        np.maximum(df["high"] - df["high"].shift(1), 0),
+        0,
+    )
+    minus_dm = np.where(
+        (df["low"].shift(1) - df["low"]) > (df["high"] - df["high"].shift(1)),
+        np.maximum(df["low"].shift(1) - df["low"], 0),
+        0,
+    )
+    tr = np.maximum.reduce(
+        [
+            df["high"] - df["low"],
+            np.abs(df["high"] - df["close"].shift()),
+            np.abs(df["low"] - df["close"].shift()),
+        ]
+    )
+    plus_di = 100 * (pd.Series(plus_dm).rolling(period).sum() / pd.Series(tr).rolling(period).sum())
+    minus_di = 100 * (pd.Series(minus_dm).rolling(period).sum() / pd.Series(tr).rolling(period).sum())
+    dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
+    return dx.rolling(period).mean()
+
+
+def parse_news_time(date_text, time_text):
+    date_text = (date_text or "").strip()
+    time_text = (time_text or "").strip().lower()
+    if not date_text or time_text in {"", "all day", "tentative"}:
+        return None
+    try:
+        dt_utc = datetime.strptime(f"{date_text} {time_text}", "%m-%d-%Y %I:%M%p").replace(tzinfo=timezone.utc)
+        return dt_utc + timedelta(hours=NEWS_TIME_OFFSET_HOURS)
+    except ValueError:
+        return None
+
+
+def refresh_news_cache(force=False):
+    global _news_cache, _last_news_sync_ts, _last_news_error
+
+    now_ts = time.time()
+    if not force and now_ts - _last_news_sync_ts < NEWS_REFRESH_MINUTES * 60:
+        return
+
+    try:
+        request = Request(NEWS_FEED_URL, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(request, timeout=12) as response:
+            xml_data = response.read()
+
+        root = ET.fromstring(xml_data)
+        events = []
+        for event in root.findall(".//event"):
+            country = (event.findtext("country") or "").strip().upper()
+            impact = (event.findtext("impact") or "").strip().title()
+            if country not in NEWS_COUNTRIES or impact not in NEWS_IMPACTS:
+                continue
+
+            title = (event.findtext("title") or "").strip()
+            date_text = (event.findtext("date") or "").strip()
+            time_text = (event.findtext("time") or "").strip()
+            link = (event.findtext("url") or "").strip()
+            event_time = parse_news_time(date_text, time_text)
+            if event_time is None:
+                continue
+
+            events.append(
+                {
+                    "time": event_time,
+                    "title": title,
+                    "country": country,
+                    "impact": impact,
+                    "url": link,
+                }
+            )
+
+        events.sort(key=lambda e: e["time"])
+        _news_cache = events
+        _last_news_sync_ts = now_ts
+        _last_news_error = ""
+        logger.info(f"NEWS CACHE UPDATED | {len(events)} high-impact events loaded")
+        if events:
+            next_event = events[0]
+            logger.info(f"NEXT NEWS EVENT | {next_event['country']} {next_event['title']} @ {next_event['time'].strftime('%Y-%m-%d %H:%M')} UTC")
+
+    except Exception as exc:
+        _last_news_sync_ts = now_ts
+        err_text = str(exc)
+        if err_text != _last_news_error:
+            _last_news_error = err_text
+            log_error(f"NEWS FEED ERROR | {err_text}")
+
+
+def current_news_blackout(now_utc):
+    refresh_news_cache()
+    for event in _news_cache:
+        start = event["time"] - timedelta(minutes=NEWS_BLOCK_BEFORE_MIN)
+        end = event["time"] + timedelta(minutes=NEWS_BLOCK_AFTER_MIN)
+        if start <= now_utc <= end:
+            return event
+    return None
+
+
+def get_next_news(now_utc):
+    refresh_news_cache()
+    for event in _news_cache:
+        if event["time"] >= now_utc:
+            return event
+    return None
+
+
+def dynamic_basket_tp(position_count):
+    levels = max(1, position_count // 2)
+    return BASE_BASKET_TP_USD + max(0, levels - 1) * TP_PER_LEVEL_USD
+
+
+def growth_factor_from_equity(equity):
+    if not AUTO_GROWTH_ENABLED:
+        return 1.0
+    raw_factor = max(1.0, equity / max(1.0, GROWTH_BASE_EQUITY))
+    return min(raw_factor, GROWTH_MAX_FACTOR)
+
+
+def get_account_free_margin(account):
+    # MT5 account_info fields can vary by bridge/version (`free_margin` vs `margin_free`).
+    free_margin = getattr(account, "free_margin", None)
+    if free_margin is None:
+        free_margin = getattr(account, "margin_free", None)
+    return float(free_margin) if free_margin is not None else None
+
+
+def send_market_order(order_type, volume, price, comment):
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": SYMBOL,
+        "volume": volume,
+        "type": order_type,
+        "price": price,
+        "deviation": 30,
+        "magic": MAGIC,
+        "comment": comment,
+        "type_time": mt5.ORDER_TIME_GTC,
+        "type_filling": FILLING_MODE,
+    }
+    result = mt5.order_send(request)
+    return result
+
+
+def close_all_positions(reason=""):
+    positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
+    if not positions:
+        return 0
+
+    closed = 0
+    for pos in positions:
+        tick = mt5.symbol_info_tick(SYMBOL)
+        if tick is None:
+            log_error(f"CLOSE FAILED #{pos.ticket} | No tick data for {SYMBOL}")
+            continue
+
+        close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+        close_price = tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": SYMBOL,
+            "volume": pos.volume,
+            "type": close_type,
+            "position": pos.ticket,
+            "price": close_price,
+            "deviation": 30,
+            "magic": MAGIC,
+            "comment": "News_Close" if reason == "NEWS" else "Close_All",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": FILLING_MODE,
+        }
+        result = mt5.order_send(request)
+        side = "BUY" if pos.type == mt5.ORDER_TYPE_BUY else "SELL"
+        retcode = result.retcode if result else "None"
+        comment = result.comment if result else "No result"
+
+        if is_trade_success(result):
+            closed += 1
+            logger.info(
+                f"CLOSE {side} #{pos.ticket} | Vol={pos.volume} P/L=${pos.profit:.2f} | retcode={retcode} | reason={reason}"
+            )
+        else:
+            log_error(
+                f"CLOSE FAILED {side} #{pos.ticket} | Vol={pos.volume} P/L=${pos.profit:.2f} | retcode={retcode} | {comment}"
+            )
+
+    return closed
+
+
+def main():
+    global FILLING_MODE
+
+    if not mt5.initialize(login=LOGIN, password=PASSWORD, server=SERVER):
+        log_error("MT5 initialize failed!")
+        return
+
+    if not mt5.symbol_select(SYMBOL, True):
+        log_error(f"Symbol {SYMBOL} not found!")
+        mt5.shutdown()
+        return
+
+    sym_info = mt5.symbol_info(SYMBOL)
+    if sym_info is None:
+        log_error(f"symbol_info({SYMBOL}) returned None")
+        mt5.shutdown()
+        return
+
+    FILLING_MODE = pick_filling_mode(sym_info)
+    refresh_news_cache(force=True)
+
+    write_log("=== NAS100 AGGRESSIVE GRID BOT v1.0 (24H + NEWS FILTER) STARTED ===")
+    print("NAS100 Aggressive Grid Bot v1.0 RUNNING - 24H with High-Impact News Blackout")
+
+    current_day = None
+    daily_start_equity = None
+    last_close_time = 0
+    peak_equity = GROWTH_BASE_EQUITY
+
+    while True:
+        now = datetime.now(timezone.utc)
+
+        if not is_trading_allowed():
+            positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
+            if positions:
+                logger.info(f"WEEKEND SAFETY: Closing {len(positions)} positions")
+                close_all_positions(reason="WEEKEND")
+                last_close_time = time.time()
+            log_skip_once("Weekend or instrument not tradable")
+            time.sleep(60)
+            continue
+
+        account = mt5.account_info()
+        if not account:
+            log_skip_once("No account info from MT5")
+            time.sleep(CHECK_INTERVAL)
+            continue
+
+        balance = account.balance
+        equity = account.equity
+        free_margin = get_account_free_margin(account)
+        if free_margin is None:
+            log_skip_once("Account free margin unavailable (free_margin/margin_free)")
+            time.sleep(CHECK_INTERVAL)
+            continue
+        today = now.date()
+        peak_equity = max(peak_equity, equity)
+
+        growth_factor = growth_factor_from_equity(equity)
+        lot_scale = growth_factor ** GROWTH_LOT_EXPONENT
+        tp_scale = growth_factor ** GROWTH_TP_EXPONENT
+        risk_scale = growth_factor ** GROWTH_RISK_EXPONENT
+
+        adaptive_start_lot = FIXED_START_LOT * lot_scale
+        adaptive_max_lot = MAX_LOT * lot_scale
+        adaptive_base_basket_tp = BASE_BASKET_TP_USD * tp_scale
+        adaptive_tp_per_level = TP_PER_LEVEL_USD * tp_scale
+        adaptive_daily_max_loss = DAILY_MAX_LOSS_USD * risk_scale
+        adaptive_global_floating_dd = GLOBAL_MAX_FLOATING_DRAWDOWN_USD * risk_scale
+        adaptive_global_min_free_margin = GLOBAL_MIN_FREE_MARGIN_USD * (1 + 0.25 * (growth_factor - 1))
+        adaptive_min_equity_stop = max(
+            MIN_EQUITY_STOP,
+            MIN_EQUITY_STOP + max(0.0, peak_equity - GROWTH_BASE_EQUITY) * GROWTH_EQUITY_LOCK_RATIO,
+        )
+        adaptive_global_soft_equity_stop = max(
+            GLOBAL_SOFT_EQUITY_STOP,
+            GLOBAL_SOFT_EQUITY_STOP + max(0.0, peak_equity - GROWTH_BASE_EQUITY) * GROWTH_EQUITY_LOCK_RATIO,
+        )
+
+        if current_day != today or daily_start_equity is None:
+            daily_start_equity = equity
+            current_day = today
+            write_log(f"New day started. Equity baseline: ${daily_start_equity:.2f}")
+
+        daily_loss = daily_start_equity - equity
+        all_positions = mt5.positions_get() or ()
+        global_open_count = len(all_positions)
+        global_floating = sum(p.profit for p in all_positions)
+
+        positions = [p for p in all_positions if p.symbol == SYMBOL and p.magic == MAGIC]
+        total_profit = sum(p.profit for p in positions)
+
+        margin_level = account.margin_level if account.margin_level and account.margin_level > 0 else None
+
+        severe_safety_reason = None
+        if equity <= adaptive_global_soft_equity_stop:
+            severe_safety_reason = f"Global equity stop reached (${equity:.2f} <= ${adaptive_global_soft_equity_stop:.2f})"
+        elif global_floating <= -adaptive_global_floating_dd:
+            severe_safety_reason = f"Global floating DD exceeded (${global_floating:.2f} <= -${adaptive_global_floating_dd:.2f})"
+        elif free_margin <= adaptive_global_min_free_margin:
+            severe_safety_reason = f"Free margin too low (${free_margin:.2f} <= ${adaptive_global_min_free_margin:.2f})"
+        elif margin_level is not None and margin_level <= GLOBAL_MIN_MARGIN_LEVEL_PCT:
+            severe_safety_reason = f"Margin level too low ({margin_level:.1f}% <= {GLOBAL_MIN_MARGIN_LEVEL_PCT:.1f}%)"
+
+        if severe_safety_reason:
+            if positions:
+                logger.info(f"GLOBAL SAFETY: Closing {len(positions)} positions | {severe_safety_reason}")
+                close_all_positions(reason="GLOBAL_SAFETY")
+                last_close_time = time.time()
+            log_skip_once(severe_safety_reason)
+            time.sleep(GLOBAL_COOLDOWN_AFTER_SAFETY)
+            continue
+
+        if equity < adaptive_min_equity_stop:
+            log_error(f"Equity ${equity:.2f} below ${adaptive_min_equity_stop:.2f} - Emergency stop!")
+            close_all_positions(reason="EQUITY_STOP")
+            print("BOT STOPPED - EQUITY PROTECTION")
+            break
+
+        if daily_loss >= adaptive_daily_max_loss:
+            log_skip_once(f"Daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f} limit - Closing all")
+            close_all_positions(reason="DAILY_LOSS")
+            last_close_time = time.time()
+            time.sleep(1800)
+            continue
+
+        blackout = current_news_blackout(now)
+        if blackout:
+            if positions and CLOSE_BEFORE_NEWS:
+                logger.info(
+                    f"NEWS BLACKOUT: Closing {len(positions)} positions | {blackout['country']} {blackout['title']} @ {blackout['time'].strftime('%Y-%m-%d %H:%M')} UTC"
+                )
+                close_all_positions(reason="NEWS")
+                last_close_time = time.time()
+            else:
+                if not positions:
+                    logger.info(f"NEWS BLACKOUT: No positions to close | {blackout['country']} {blackout['title']} @ {blackout['time'].strftime('%H:%M')} UTC")
+                if not CLOSE_BEFORE_NEWS:
+                    logger.info(f"NEWS BLACKOUT: CLOSE_BEFORE_NEWS is disabled - positions remain open")
+            log_skip_once(
+                f"News blackout active ({blackout['country']} {blackout['title']} @ {blackout['time'].strftime('%H:%M')} UTC)"
+            )
+            time.sleep(CHECK_INTERVAL)
+            continue
+
+        vol_df = get_data(SYMBOL, ATR_TIMEFRAME, ATR_BARS)
+        trend_df = get_data(SYMBOL, TREND_TIMEFRAME, TREND_BARS)
+        if vol_df is None or trend_df is None:
+            log_skip_once("Insufficient bars for ATR/ADX metrics")
+            time.sleep(CHECK_INTERVAL)
+            continue
+
+        atr_series = calculate_atr(vol_df, ATR_PERIOD)
+        adx_series = calculate_adx(trend_df, ATR_PERIOD)
+        atr = float(atr_series.iloc[-1]) if not pd.isna(atr_series.iloc[-1]) else None
+        adx = float(adx_series.iloc[-1]) if not pd.isna(adx_series.iloc[-1]) else None
+        if atr is None or atr <= 0 or adx is None:
+            log_skip_once(f"Invalid ATR/ADX values | ATR={atr} ADX={adx}")
+            time.sleep(CHECK_INTERVAL)
+            continue
+
+        sym_info = mt5.symbol_info(SYMBOL)
+        tick = mt5.symbol_info_tick(SYMBOL)
+        if sym_info is None or tick is None:
+            log_skip_once(f"No symbol or tick info for {SYMBOL}")
+            time.sleep(CHECK_INTERVAL)
+            continue
+
+        spread_price = tick.ask - tick.bid
+        if spread_price > atr * MAX_SPREAD_ATR_RATIO:
+            log_skip_once(f"Spread too wide for volatility | spread={spread_price:.2f}, atr={atr:.2f}")
+            time.sleep(CHECK_INTERVAL)
+            continue
+
+        tp_target = (
+            adaptive_base_basket_tp + max(0, max(1, len(positions) // 2) - 1) * adaptive_tp_per_level
+            if positions
+            else adaptive_base_basket_tp
+        )
+        if positions and total_profit >= tp_target:
+            logger.info(
+                f"BASKET TP HIT | P/L=${total_profit:.2f} >= ${tp_target:.2f} | Closing {len(positions)} positions"
+            )
+            close_all_positions(reason="BASKET_TP")
+            print(f"BASKET PROFIT ${total_profit:.2f} - Grid reset")
+            last_close_time = time.time()
+            time.sleep(5)
+            continue
+
+        start_entry_cap = max(1, GLOBAL_MAX_ACCOUNT_POSITIONS - GLOBAL_POSITION_RESERVE_FOR_EXPANSION)
+        start_entries_blocked = global_open_count >= start_entry_cap
+        expansion_entries_blocked = global_open_count >= GLOBAL_MAX_ACCOUNT_POSITIONS
+
+        if time.time() - last_close_time < COOLDOWN_AFTER_CLOSE:
+            log_skip_once(f"Cooldown active ({COOLDOWN_AFTER_CLOSE}s after last close)")
+        elif not positions:
+            if start_entries_blocked:
+                log_skip_once(
+                    f"Global start cap reached ({global_open_count}/{start_entry_cap}, reserve={GLOBAL_POSITION_RESERVE_FOR_EXPANSION})"
+                )
+                time.sleep(CHECK_INTERVAL)
+                continue
+
+            if adx >= TREND_PAUSE_ADX:
+                log_skip_once(f"Trend too strong to start a new grid | ADX={adx:.1f}")
+                time.sleep(CHECK_INTERVAL)
+                continue
+
+            start_lot = normalize_lot(min(adaptive_start_lot, adaptive_max_lot), sym_info)
+            logger.info(
+                f"GRID START | Opening BUY @ {tick.ask:.2f} + SELL @ {tick.bid:.2f} | Lot={start_lot} | ATR={atr:.2f} ADX={adx:.1f} | growth=x{growth_factor:.2f}"
+            )
+
+            result_buy = send_market_order(mt5.ORDER_TYPE_BUY, start_lot, tick.ask, "NAS100_Grid_Start_BUY")
+            if is_trade_success(result_buy):
+                log_trade("BUY", f"Grid start @ {tick.ask:.2f} | Lot={start_lot} | retcode={result_buy.retcode}")
+            else:
+                retcode = result_buy.retcode if result_buy else "None"
+                comment = result_buy.comment if result_buy else "No result"
+                log_error(f"Grid start BUY failed | retcode={retcode} | {comment}")
+            time.sleep(1)
+
+            result_sell = send_market_order(mt5.ORDER_TYPE_SELL, start_lot, tick.bid, "NAS100_Grid_Start_SELL")
+            if is_trade_success(result_sell):
+                log_trade("SELL", f"Grid start @ {tick.bid:.2f} | Lot={start_lot} | retcode={result_sell.retcode}")
+            else:
+                retcode = result_sell.retcode if result_sell else "None"
+                comment = result_sell.comment if result_sell else "No result"
+                log_error(f"Grid start SELL failed | retcode={retcode} | {comment}")
+            time.sleep(1)
+
+            positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
+            if len(positions) == 2:
+                logger.info("Grid initialized successfully with BUY + SELL")
+                print("New NAS100 aggressive grid started!")
+            else:
+                log_error(f"Grid incomplete: expected 2 positions, got {len(positions)} - retrying")
+                close_all_positions(reason="INCOMPLETE_START")
+                print("Initial grid incomplete - retrying...")
+
+        else:
+            prices = [p.price_open for p in positions]
+            avg_price = sum(prices) / len(prices)
+            current_price = (tick.ask + tick.bid) / 2
+            distance_price = abs(current_price - avg_price)
+            levels_now = len(positions) // 2
+            step_price = max(MIN_GRID_STEP_PRICE, min(MAX_GRID_STEP_PRICE, atr * GRID_ATR_MULTIPLIER))
+            needed_distance = step_price * levels_now
+
+            if adx >= TREND_PAUSE_ADX:
+                log_skip_once(f"Trend too strong for expansion | ADX={adx:.1f} >= {TREND_PAUSE_ADX}")
+            elif expansion_entries_blocked:
+                log_skip_once(f"Global hard cap reached ({global_open_count}/{GLOBAL_MAX_ACCOUNT_POSITIONS})")
+            elif distance_price >= needed_distance and len(positions) < MAX_LEVELS * 2:
+                raw_lot = adaptive_start_lot * (LOT_MULTIPLIER ** levels_now)
+                level_lot = min(raw_lot, adaptive_max_lot)
+                level_lot = normalize_lot(level_lot, sym_info)
+
+                if current_price < avg_price:
+                    result = send_market_order(mt5.ORDER_TYPE_BUY, level_lot, tick.ask, "NAS100_Grid_BUY")
+                    if is_trade_success(result):
+                        log_trade(
+                            "BUY",
+                            f"Grid level {levels_now + 1} | Lot={level_lot} | dist={distance_price:.2f} | step={step_price:.2f} | retcode={result.retcode}",
+                        )
+                    else:
+                        retcode = result.retcode if result else "None"
+                        comment = result.comment if result else "No result"
+                        log_error(f"Grid BUY level failed | Lvl={levels_now + 1} | retcode={retcode} | {comment}")
+                else:
+                    result = send_market_order(mt5.ORDER_TYPE_SELL, level_lot, tick.bid, "NAS100_Grid_SELL")
+                    if is_trade_success(result):
+                        log_trade(
+                            "SELL",
+                            f"Grid level {levels_now + 1} | Lot={level_lot} | dist={distance_price:.2f} | step={step_price:.2f} | retcode={result.retcode}",
+                        )
+                    else:
+                        retcode = result.retcode if result else "None"
+                        comment = result.comment if result else "No result"
+                        log_error(f"Grid SELL level failed | Lvl={levels_now + 1} | retcode={retcode} | {comment}")
+            else:
+                log_skip_once(
+                    f"Grid waiting | {len(positions)} pos | dist={distance_price:.2f}/{needed_distance:.2f} price units"
+                )
+
+        next_news = get_next_news(now)
+        next_news_text = (
+            f"{next_news['country']} {next_news['title']} @ {next_news['time'].strftime('%m-%d %H:%M')} UTC"
+            if next_news
+            else "None"
+        )
+
+        os.system("cls")
+        print("=" * 90)
+        print("   NAS100 AGGRESSIVE GRID BOT v1.0 (24H + NEWS FILTER)")
+        print(f"   Balance      : ${balance:.2f} | Equity: ${equity:.2f}")
+        print(f"   Growth       : x{growth_factor:.2f} | Peak Equity: ${peak_equity:.2f}")
+        print(f"   Positions    : {len(positions)} / {MAX_LEVELS * 2}")
+        print(f"   Global Pos   : {global_open_count} / {GLOBAL_MAX_ACCOUNT_POSITIONS}")
+        print(f"   Start Cap    : {start_entry_cap} (reserve {GLOBAL_POSITION_RESERVE_FOR_EXPANSION})")
+        print(f"   Basket P/L   : ${total_profit:.2f} (TP at +${tp_target:.2f})")
+        print(f"   Global Float : ${global_floating:.2f} | Daily Loss: ${daily_loss:.2f} / ${adaptive_daily_max_loss:.2f}")
+        print(f"   Start/MaxLot : {adaptive_start_lot:.3f}/{adaptive_max_lot:.3f}")
+        print(f"   ATR(M5)      : {atr:.2f} | ADX(M15): {adx:.1f}")
+        print(f"   Spread       : {spread_price:.2f} | Max allowed: {atr * MAX_SPREAD_ATR_RATIO:.2f}")
+        print(f"   Free Margin  : ${free_margin:.2f} | Margin Level: {margin_level if margin_level is not None else 0:.1f}%")
+        print(f"   Next News    : {next_news_text}")
+        print(f"   Time         : {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        print("=" * 90)
+
+        time.sleep(CHECK_INTERVAL)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        close_all_positions(reason="MANUAL_STOP")
+        logger.info("Bot stopped by user")
+        print("\nBot stopped by user")
+    finally:
+        mt5.shutdown()

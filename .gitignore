@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# MT5 Credentials - Grid bots with credentials (exclude from version control)
+# Grid bots are tracked as *.template.py files (without credentials)
+eurusd_grid_bot.py
+gbpusd_grid_bot.py
+usdjpy_grid_bot.py
+audusd_grid_bot.py
+nzdusd_grid_bot.py
+usdcad_grid_bot.py
+nas100_grid_bot.py
+nas100_trend_bot.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+.github/
+.serena/
