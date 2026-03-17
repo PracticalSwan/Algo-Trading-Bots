@@ -27,7 +27,6 @@ python nzdusd_grid_bot.py
 python usdcad_grid_bot.py
 python usdjpy_grid_bot.py
 python nas100_grid_bot.py
-python nas100_trend_bot.py
 ```
 
 Each bot runs indefinitely in a loop until stopped with `Ctrl+C` (which safely closes all positions).
@@ -37,7 +36,7 @@ Each bot runs indefinitely in a loop until stopped with `Ctrl+C` (which safely c
 pip install MetaTrader5 pandas numpy
 ```
 
-`pandas` and `numpy` are required by all bots (forex grid engine + NAS100 bots).
+`pandas` and `numpy` are required by the shared grid engine and NAS100 grid bot.
 
 ### View live logs
 ```powershell
@@ -54,19 +53,12 @@ Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
 - Open BUY and SELL hedge orders, then expand grid levels with ATR-adaptive spacing
 - Close entire basket when cumulative floating profit reaches `BASKET_TP_USD`
 - Some profiles use multiplier-based sizing while conservative profiles use fixed-lot behavior
-- Trade Asia session only: 22:00–08:00 UTC, weekdays only
+- Trade Asia session only: 22:00-08:00 UTC, weekdays only
 - Auto-close all positions at session end (08:00 UTC) before London open
 
 **NAS100 Grid Bot** (`nas100_grid_bot.py`):
-- Aggressive USTEC grid with ATR-adaptive step size, ADX trend filter, and high-impact USD news blackout.
-- Trades all available market hours on weekdays and supports optional pre-news flattening.
-
-**Trend Bot** (`nas100_trend_bot.py`):
-- EMA crossover (9/21), RSI, and ADX for entry signals on M15 timeframe
-- ATR-based trailing stop and breakeven management
-- Trades 08:00–17:00 UTC (London + NY overlap), weekdays only
-- Skips major US news windows (12:00–15:00 UTC)
-- Limits: max 2 concurrent positions, 8 trades per day
+- Aggressive USTEC grid with ATR-adaptive step size, ADX trend filter, and high-impact USD news blackout
+- Trades all available market hours on weekdays and supports optional pre-news flattening
 
 ### Shared Risk Controls (all bots)
 
@@ -75,41 +67,31 @@ Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
 | `DAILY_MAX_LOSS_USD` / `DAILY_MAX_LOSS_PERCENT` | Stops trading for day if breached |
 | `MIN_EQUITY_STOP` | Emergency close-all and shutdown if equity drops below threshold |
 | `COOLDOWN_AFTER_CLOSE` | Seconds to wait after basket close before opening new positions |
-| `is_trading_allowed()` | Session guard — returns `False` on weekends or outside trading hours |
-| `MAGIC` | Unique integer per bot — filters this bot's orders from others |
+| `is_trading_allowed()` | Session guard - returns `False` on weekends or outside trading hours |
+| `MAGIC` | Unique integer per bot - filters this bot's orders from others |
 
 ### Grid Bot Logic Flow
 
 1. **Entry**: If no positions exist, open BUY + SELL at current price (grid start)
 2. **Grid expansion**: Add new levels only after ATR-adaptive distance thresholds and spread/trend filters pass
-3. **Lot sizing**: `FIXED_START_LOT × (LOT_MULTIPLIER ^ level_number)` with symbol-normalization and `MAX_LOT` cap
+3. **Lot sizing**: `FIXED_START_LOT x (LOT_MULTIPLIER ^ level_number)` with symbol-normalization and `MAX_LOT` cap
 4. **Exit**: Close all positions when `total_profit >= BASKET_TP_USD`
 5. **Safety**: Enforce account-wide parallel guards, equity stops, and session-end flattening
 
-### Trend Bot Logic Flow
-
-1. **Entry**: EMA9 crosses EMA21 + RSI confirmation + ADX threshold + volume filter
-2. **SL/TP**: ATR-based (1.5× ATR SL, 4.5× ATR TP)
-3. **Management**: Trailing stop (`TRAILING_ATR_MULTIPLIER`) and breakeven (`BREAKEVEN_ATR`)
-4. **Exit**: SL/TP hit, session end, or daily trade limit
-
----
-
 ## File Structure
 
-```
+```text
 Exness_Bot/
-├── *_grid_bot.py          # Grid bots with credentials (gitignored - local use only)
-├── *_grid_bot.py.template # Grid bot templates WITHOUT credentials (tracked in git)
-├── forex_grid_engine.py   # Shared forex grid execution/risk engine
-├── nas100_grid_bot.py     # Aggressive NAS100 grid bot with news blackout (gitignored)
-├── nas100_grid_bot.py.template # NAS100 grid bot template WITHOUT credentials (tracked)
-├── nas100_trend_bot.py    # Single trend bot for NAS100 (tracked - no hardcoded credentials)
-├── .gitignore             # Excludes grid bots with credentials from version control
-├── lessons.md             # Persistent lessons learned from implementation work
-├── logs/                  # Auto-created, daily rotating logs (gitignored)
-├── CLAUDE.md              # This file
-└── README.md              # User documentation
+|-- *_grid_bot.py          # Grid bots with credentials (gitignored - local use only)
+|-- *_grid_bot.py.template # Grid bot templates WITHOUT credentials (tracked in git)
+|-- forex_grid_engine.py   # Shared forex grid execution/risk engine
+|-- nas100_grid_bot.py     # Aggressive NAS100 grid bot with news blackout (gitignored)
+|-- nas100_grid_bot.py.template # NAS100 grid bot template WITHOUT credentials (tracked)
+|-- .gitignore             # Excludes grid bots with credentials from version control
+|-- lessons.md             # Persistent lessons learned from implementation work
+|-- logs/                  # Auto-created, daily rotating logs (gitignored)
+|-- CLAUDE.md              # This file
+|-- README.md              # User documentation
 ```
 
 ### Template Files and Credential Management
@@ -119,7 +101,7 @@ Exness_Bot/
 When making changes to any grid bot:
 1. **Edit the `.template.py` file first** (this is tracked in git)
 2. **Then manually sync the change to the corresponding `*_grid_bot.py`** (local file with credentials)
-3. The trend bot (`nas100_trend_bot.py`) is tracked directly as it has no hardcoded credentials
+3. Shared tracked files like `forex_grid_engine.py` can be edited directly
 
 This design allows:
 - Sharing bot configurations and code changes via git without exposing credentials
@@ -165,22 +147,22 @@ Current profile mapping for forex bots:
 3. **Never edit the local `*_grid_bot.py` without updating the template** - Changes will be lost on git pull
 
 **Files to sync**:
-- `eurusd_grid_bot.py` ↔ `eurusd_grid_bot.py.template`
-- `gbpusd_grid_bot.py` ↔ `gbpusd_grid_bot.py.template`
-- `usdjpy_grid_bot.py` ↔ `usdjpy_grid_bot.py.template`
-- `audusd_grid_bot.py` ↔ `audusd_grid_bot.py.template`
-- `nzdusd_grid_bot.py` ↔ `nzdusd_grid_bot.py.template`
-- `usdcad_grid_bot.py` ↔ `usdcad_grid_bot.py.template`
-- `nas100_grid_bot.py` ↔ `nas100_grid_bot.py.template`
+- `eurusd_grid_bot.py` <-> `eurusd_grid_bot.py.template`
+- `gbpusd_grid_bot.py` <-> `gbpusd_grid_bot.py.template`
+- `usdjpy_grid_bot.py` <-> `usdjpy_grid_bot.py.template`
+- `audusd_grid_bot.py` <-> `audusd_grid_bot.py.template`
+- `nzdusd_grid_bot.py` <-> `nzdusd_grid_bot.py.template`
+- `usdcad_grid_bot.py` <-> `usdcad_grid_bot.py.template`
+- `nas100_grid_bot.py` <-> `nas100_grid_bot.py.template`
 
-**Exception**: `nas100_trend_bot.py` and `forex_grid_engine.py` are tracked directly (no templates needed).
+**Exception**: `forex_grid_engine.py` is tracked directly (no template needed).
 
 ---
 
 ## Important Notes
 
 - **Symbol names must match MT5 exactly**: Exness uses suffixed names like `EURUSDm`, `USTECm`
-- **Session timing is deliberate**: Grid bots need range-bound Asia session; trend bot needs directional London-NY session
+- **Session timing is deliberate**: Forex grids use the range-bound Asia session; NAS100 grid follows market hours and news blackouts
 - **Filling mode**: Auto-detected at startup (`ORDER_FILLING_IOC` or `ORDER_FILLING_RETURN`)
-- **Console output**: Cleared each loop iteration with `os.system('cls')` — real-time dashboard
+- **Console output**: Cleared each loop iteration with `os.system('cls')` - real-time dashboard
 - **MT5 API**: Uses `mt5.initialize()`, `mt5.positions_get()`, `mt5.order_send()`, `mt5.shutdown()`

@@ -21,7 +21,6 @@ audusd_grid_bot.py
 nzdusd_grid_bot.py
 usdcad_grid_bot.py
 nas100_grid_bot.py
-nas100_trend_bot.py
 
 # IDE
 .vscode/

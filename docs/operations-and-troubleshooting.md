@@ -7,7 +7,6 @@
 ```powershell
 python eurusd_grid_bot.py
 python nas100_grid_bot.py
-python nas100_trend_bot.py
 ```
 
 Bots run continuously until interrupted. `Ctrl+C` is intended to shut them down safely.
@@ -42,7 +41,6 @@ The `logs/` folder is created automatically if it does not exist.
 | `*_grid_bot.py` | Local grid bot files with credentials |
 | `forex_grid_engine.py` | Shared execution and risk engine for all forex grid wrappers |
 | `nas100_grid_bot.py.template` | Tracked NAS100 grid template |
-| `nas100_trend_bot.py` | Tracked NAS100 trend bot without hardcoded credentials |
 | `logs/` | Daily runtime logs |
 
 ## Template workflow
@@ -88,17 +86,6 @@ When changing a grid bot:
 | `NEWS_COUNTRIES`, `NEWS_IMPACTS` | Event filter scope |
 | `NEWS_BLOCK_BEFORE_MIN`, `NEWS_BLOCK_AFTER_MIN` | Event blackout window |
 | `CLOSE_BEFORE_NEWS` | Flatten positions around blocked events |
-
-### NAS100 trend extras
-
-| Parameter group | Meaning |
-|---|---|
-| `TIMEFRAME` | MT5 timeframe constant |
-| `ADX_THRESHOLD` | Minimum trend strength |
-| `RSI_BUY`, `RSI_SELL` | RSI entry thresholds |
-| `TRAILING_ATR_MULTIPLIER`, `BREAKEVEN_ATR` | Trade management controls |
-| `MAX_DAILY_TRADES`, `MAX_TOTAL_POSITIONS` | Trend runtime limits |
-| `TRADING_START_HOUR_UTC`, `TRADING_END_HOUR_UTC` | Active session window |
 
 ## Environment variables for credentials
 

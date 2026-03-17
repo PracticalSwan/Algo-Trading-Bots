@@ -25,16 +25,6 @@ Core behavior:
 - optional position flattening around blocked events
 - growth-aware sizing and safety thresholds
 
-### NAS100 trend bot
-
-`nas100_trend_bot.py` is the directional strategy in the repo:
-
-- EMA crossover for trend direction
-- RSI confirmation
-- ADX threshold for trend strength
-- ATR-based trailing stop and breakeven logic
-- 08:00-17:00 UTC operating window
-
 ## Why the sessions differ
 
 ### Forex grid session: 22:00-08:00 UTC
@@ -51,13 +41,13 @@ High-level placement:
 
 All forex baskets are flattened before the London open at 08:00 UTC.
 
-### NAS100 trend session: 08:00-17:00 UTC
+### NAS100 grid availability: market hours, Mon-Fri
 
-The trend bot runs when directional follow-through is more likely:
+The NAS100 grid bot stays aligned to index market availability instead of the forex Asia window:
 
-- Europe is open from the start of the window.
-- US cash equity activity later in the day adds liquidity and momentum.
-- The bot avoids lower-quality overnight drift.
+- index volatility is more usable when the underlying cash and futures participation is active
+- high-impact USD events are explicitly blacked out
+- optional pre-news flattening reduces event shock exposure
 
 ## Current forex profile ranges
 

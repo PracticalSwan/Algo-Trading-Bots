@@ -5,6 +5,14 @@ All notable changes to this project will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [Unreleased]
+
+### Removed
+- Removed `nas100_trend_bot.py` from the active repository bot lineup.
+
+### Changed
+- Updated repo documentation, workflow guidance, and ignore rules to remove current-state references to the deleted NAS100 trend bot while preserving historical changelog entries.
+
 
 ## [1.0.8] — 2026-03-17
 
