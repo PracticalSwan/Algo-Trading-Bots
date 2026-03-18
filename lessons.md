@@ -9,6 +9,11 @@ How to update:
 
 ---
 
+## 2026-03-18 (NAS100 Conservative Retune)
+
+- For Exness `USTECm`, a conservative retune should usually reduce both level growth and expansion frequency together; the March 17-18 logs showed recurring spreads around `1.92-2.16` while M5 ATR compressed into roughly `7-10`, so lower multipliers alone would still leave the grid too eager.
+- When a live bot profile changes, sync the template file, local credentialed copy, startup labels, README/docs, changelog, lessons, and project memory in the same pass so current-state references do not drift.
+
 ## 2026-03-17 (NAS100 Trend Removal Cleanup)
 
 - When a bot is removed from the repo, clean up every current-state reference together: `README.md`, `docs/`, `CLAUDE.md`, workspace skills, ignore rules, and project memory.

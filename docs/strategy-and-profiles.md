@@ -15,15 +15,25 @@ Core behavior:
 - Close by exact MT5 ticket targeting.
 - Flatten at the end of the Asia session.
 
-### NAS100 aggressive grid bot
+### NAS100 conservative grid bot
 
-`nas100_grid_bot.py` applies the same survival-first grid philosophy to `USTECm`, but with index-specific controls:
+`nas100_grid_bot.py` applies the same survival-first grid philosophy to `USTECm`, but it is now tuned as a conservative index grid for current Exness conditions:
 
 - ATR-adaptive spacing
+- wider minimum spacing for quieter ATR regimes
 - ADX trend pause
 - high-impact USD news blackout
 - optional position flattening around blocked events
 - growth-aware sizing and safety thresholds
+
+Current NAS100 settings:
+
+- `LOT_MULTIPLIER = 1.00`
+- `MAX_LOT = 0.02`
+- `MAX_LEVELS = 4`
+- `GROWTH_LOT_EXPONENT = 0.50`
+- `GRID_ATR_MULTIPLIER = 1.00`
+- `MIN_GRID_STEP_PRICE = 18.0`
 
 ## Why the sessions differ
 

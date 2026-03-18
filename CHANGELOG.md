@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Updated repo documentation, workflow guidance, and ignore rules to remove current-state references to the deleted NAS100 trend bot while preserving historical changelog entries.
+- Retuned `nas100_grid_bot.py` and `nas100_grid_bot.py.template` from aggressive to conservative for current Exness `USTECm` conditions by setting `LOT_MULTIPLIER=1.00`, `MAX_LOT=0.02`, `MAX_LEVELS=4`, `GROWTH_LOT_EXPONENT=0.50`, `GRID_ATR_MULTIPLIER=1.00`, and `MIN_GRID_STEP_PRICE=18.0`.
+- Updated current-state docs and workflow guidance to reflect NAS100 as the conservative, news-aware `USTECm` grid variant.
 
 
 ## [1.0.8] — 2026-03-17

@@ -57,7 +57,7 @@ Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
 - Auto-close all positions at session end (08:00 UTC) before London open
 
 **NAS100 Grid Bot** (`nas100_grid_bot.py`):
-- Aggressive USTEC grid with ATR-adaptive step size, ADX trend filter, and high-impact USD news blackout
+- Conservative USTEC grid with ATR-adaptive step size, ADX trend filter, and high-impact USD news blackout
 - Trades all available market hours on weekdays and supports optional pre-news flattening
 
 ### Shared Risk Controls (all bots)
@@ -85,7 +85,7 @@ Exness_Bot/
 |-- *_grid_bot.py          # Grid bots with credentials (gitignored - local use only)
 |-- *_grid_bot.py.template # Grid bot templates WITHOUT credentials (tracked in git)
 |-- forex_grid_engine.py   # Shared forex grid execution/risk engine
-|-- nas100_grid_bot.py     # Aggressive NAS100 grid bot with news blackout (gitignored)
+|-- nas100_grid_bot.py     # Conservative NAS100 grid bot with news blackout (gitignored)
 |-- nas100_grid_bot.py.template # NAS100 grid bot template WITHOUT credentials (tracked)
 |-- .gitignore             # Excludes grid bots with credentials from version control
 |-- lessons.md             # Persistent lessons learned from implementation work

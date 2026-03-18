@@ -3,7 +3,7 @@
 Automated MetaTrader 5 bots for Exness-focused forex grid trading plus one NAS100 grid strategy:
 
 - 6 forex grid wrappers that share `forex_grid_engine.py`
-- 1 aggressive NAS100 grid bot
+- 1 conservative NAS100 grid bot
 
 The README is intentionally short.
 Use it as the front door, then jump into the focused docs for setup,
@@ -19,7 +19,7 @@ tuning details, and troubleshooting.
 | `audusd_grid_bot.py` | `audusd_grid_bot.py.template` | `AUDUSDm` | 22:00-08:00 | Grid, Conservative |
 | `nzdusd_grid_bot.py` | `nzdusd_grid_bot.py.template` | `NZDUSDm` | 22:00-08:00 | Grid, Conservative |
 | `usdcad_grid_bot.py` | `usdcad_grid_bot.py.template` | `USDCADm` | 22:00-08:00 | Grid, Balanced |
-| `nas100_grid_bot.py` | `nas100_grid_bot.py.template` | `USTECm` | Market hours, Mon-Fri | Grid, Aggressive |
+| `nas100_grid_bot.py` | `nas100_grid_bot.py.template` | `USTECm` | Market hours, Mon-Fri | Grid, Conservative |
 
 ## Quick start
 
@@ -85,7 +85,8 @@ open positions, while active baskets can still expand until the hard cap of
 
 NAS100 sits outside those forex bands:
 
-- `nas100_grid_bot.py` is the aggressive, news-aware grid variant for `USTECm`.
+- `nas100_grid_bot.py` is the conservative, news-aware grid variant for `USTECm`.
+- Current live tuning is `LOT_MULTIPLIER=1.00`, `MAX_LOT=0.02`, `MAX_LEVELS=4`, `GROWTH_LOT_EXPONENT=0.50`, `GRID_ATR_MULTIPLIER=1.00`, and `MIN_GRID_STEP_PRICE=18.0`.
 
 ## Docs map
 

@@ -17,9 +17,9 @@ SYMBOL = "USTECm"
 MAGIC = 2026031301
 
 FIXED_START_LOT = 0.01
-LOT_MULTIPLIER = 1.28
-MAX_LOT = 0.035
-MAX_LEVELS = 5
+LOT_MULTIPLIER = 1.00
+MAX_LOT = 0.02
+MAX_LEVELS = 4
 
 BASE_BASKET_TP_USD = 1.90
 TP_PER_LEVEL_USD = 0.30
@@ -39,7 +39,7 @@ GLOBAL_COOLDOWN_AFTER_SAFETY = 300
 AUTO_GROWTH_ENABLED = True
 GROWTH_BASE_EQUITY = 50.0
 GROWTH_MAX_FACTOR = 3.0
-GROWTH_LOT_EXPONENT = 0.65
+GROWTH_LOT_EXPONENT = 0.50
 GROWTH_TP_EXPONENT = 0.85
 GROWTH_RISK_EXPONENT = 0.60
 GROWTH_EQUITY_LOCK_RATIO = 0.35
@@ -47,8 +47,8 @@ GROWTH_EQUITY_LOCK_RATIO = 0.35
 ATR_TIMEFRAME = mt5.TIMEFRAME_M5
 ATR_PERIOD = 14
 ATR_BARS = 140
-GRID_ATR_MULTIPLIER = 0.85
-MIN_GRID_STEP_PRICE = 15.0
+GRID_ATR_MULTIPLIER = 1.00
+MIN_GRID_STEP_PRICE = 18.0
 MAX_GRID_STEP_PRICE = 60.0
 MAX_SPREAD_ATR_RATIO = 0.22
 
@@ -375,8 +375,8 @@ def main():
     FILLING_MODE = pick_filling_mode(sym_info)
     refresh_news_cache(force=True)
 
-    write_log("=== NAS100 AGGRESSIVE GRID BOT v1.0 (24H + NEWS FILTER) STARTED ===")
-    print("NAS100 Aggressive Grid Bot v1.0 RUNNING - 24H with High-Impact News Blackout")
+    write_log("=== NAS100 CONSERVATIVE GRID BOT v1.0 (24H + NEWS FILTER) STARTED ===")
+    print("NAS100 Conservative Grid Bot v1.0 RUNNING - 24H with High-Impact News Blackout")
 
     current_day = None
     daily_start_equity = None
@@ -588,7 +588,7 @@ def main():
             positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
             if len(positions) == 2:
                 logger.info("Grid initialized successfully with BUY + SELL")
-                print("New NAS100 aggressive grid started!")
+                print("New NAS100 conservative grid started!")
             else:
                 log_error(f"Grid incomplete: expected 2 positions, got {len(positions)} - retrying")
                 close_all_positions(reason="INCOMPLETE_START")
@@ -648,7 +648,7 @@ def main():
 
         os.system("cls")
         print("=" * 90)
-        print("   NAS100 AGGRESSIVE GRID BOT v1.0 (24H + NEWS FILTER)")
+        print("   NAS100 CONSERVATIVE GRID BOT v1.0 (24H + NEWS FILTER)")
         print(f"   Balance      : ${balance:.2f} | Equity: ${equity:.2f}")
         print(f"   Growth       : x{growth_factor:.2f} | Peak Equity: ${peak_equity:.2f}")
         print(f"   Positions    : {len(positions)} / {MAX_LEVELS * 2}")
