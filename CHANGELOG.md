@@ -5,13 +5,12 @@ All notable changes to this project will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
-## [Unreleased]
+## [1.1] — 2026-03-20
 
 ### Removed
 - Removed `nas100_trend_bot.py` from the active repository bot lineup.
 
 ### Changed
-- Updated repo documentation, workflow guidance, and ignore rules to remove current-state references to the deleted NAS100 trend bot while preserving historical changelog entries.
 - Retuned `nas100_grid_bot.py` and `nas100_grid_bot.py.template` from aggressive to conservative for current Exness `USTECm` conditions by setting `LOT_MULTIPLIER=1.00`, `MAX_LOT=0.02`, `MAX_LEVELS=4`, `GROWTH_LOT_EXPONENT=0.50`, `GRID_ATR_MULTIPLIER=1.00`, and `MIN_GRID_STEP_PRICE=18.0`.
 - Updated current-state docs and workflow guidance to reflect NAS100 as the conservative, news-aware `USTECm` grid variant.
 - Reworked daily-loss enforcement so the six forex wrappers now share one combined forex-only UTC-day loss scope with `DAILY_MAX_LOSS_USD = 3.00`, while NAS100 uses its own tighter `DAILY_MAX_LOSS_USD = 2.60`.
