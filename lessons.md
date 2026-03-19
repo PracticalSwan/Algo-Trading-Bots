@@ -9,6 +9,11 @@ How to update:
 
 ---
 
+## 2026-03-19 (Bot-Scoped Daily Loss)
+
+- When multiple MT5 bots share one account, daily-loss checks should not be derived from total account equity if the limit is meant to be bot-specific; that couples unrelated bots and makes one strategy consume another's daily-loss budget.
+- The safer pattern is to compute current UTC-day bot P/L from MT5 deal history plus open-position P/L filtered by `SYMBOL` and `MAGIC`, while leaving `GLOBAL_*` protections account-wide.
+
 ## 2026-03-18 (NAS100 Conservative Retune)
 
 - For Exness `USTECm`, a conservative retune should usually reduce both level growth and expansion frequency together; the March 17-18 logs showed recurring spreads around `1.92-2.16` while M5 ATR compressed into roughly `7-10`, so lower multipliers alone would still leave the grid too eager.

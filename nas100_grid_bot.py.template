@@ -9,6 +9,8 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 
+from daily_loss_scope import daily_loss_from_pnl, fetch_scoped_daily_pnl
+
 # ====================== CONFIG =========================
 LOGIN = YOUR_MT5_ACCOUNT_NUMBER
 PASSWORD = "YOUR_MT5_PASSWORD"
@@ -378,8 +380,6 @@ def main():
     write_log("=== NAS100 CONSERVATIVE GRID BOT v1.0 (24H + NEWS FILTER) STARTED ===")
     print("NAS100 Conservative Grid Bot v1.0 RUNNING - 24H with High-Impact News Blackout")
 
-    current_day = None
-    daily_start_equity = None
     last_close_time = 0
     peak_equity = GROWTH_BASE_EQUITY
 
@@ -409,7 +409,6 @@ def main():
             log_skip_once("Account free margin unavailable (free_margin/margin_free)")
             time.sleep(CHECK_INTERVAL)
             continue
-        today = now.date()
         peak_equity = max(peak_equity, equity)
 
         growth_factor = growth_factor_from_equity(equity)
@@ -433,12 +432,17 @@ def main():
             GLOBAL_SOFT_EQUITY_STOP + max(0.0, peak_equity - GROWTH_BASE_EQUITY) * GROWTH_EQUITY_LOCK_RATIO,
         )
 
-        if current_day != today or daily_start_equity is None:
-            daily_start_equity = equity
-            current_day = today
-            write_log(f"New day started. Equity baseline: ${daily_start_equity:.2f}")
-
-        daily_loss = daily_start_equity - equity
+        scoped_daily_pnl = fetch_scoped_daily_pnl(
+            mt5,
+            symbol=SYMBOL,
+            magic=MAGIC,
+            now=now,
+        )
+        if scoped_daily_pnl is None:
+            log_skip_once("MT5 deal history unavailable for bot-scoped daily loss")
+            time.sleep(CHECK_INTERVAL)
+            continue
+        daily_loss = daily_loss_from_pnl(scoped_daily_pnl)
         all_positions = mt5.positions_get() or ()
         global_open_count = len(all_positions)
         global_floating = sum(p.profit for p in all_positions)
@@ -474,7 +478,7 @@ def main():
             break
 
         if daily_loss >= adaptive_daily_max_loss:
-            log_skip_once(f"Daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f} limit - Closing all")
+            log_skip_once(f"Bot-scoped daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f} limit - Closing all")
             close_all_positions(reason="DAILY_LOSS")
             last_close_time = time.time()
             time.sleep(1800)
@@ -655,7 +659,10 @@ def main():
         print(f"   Global Pos   : {global_open_count} / {GLOBAL_MAX_ACCOUNT_POSITIONS}")
         print(f"   Start Cap    : {start_entry_cap} (reserve {GLOBAL_POSITION_RESERVE_FOR_EXPANSION})")
         print(f"   Basket P/L   : ${total_profit:.2f} (TP at +${tp_target:.2f})")
-        print(f"   Global Float : ${global_floating:.2f} | Daily Loss: ${daily_loss:.2f} / ${adaptive_daily_max_loss:.2f}")
+        print(
+            f"   Global Float : ${global_floating:.2f} | Bot Day P/L: ${scoped_daily_pnl:.2f} | "
+            f"Daily Loss: ${daily_loss:.2f} / ${adaptive_daily_max_loss:.2f}"
+        )
         print(f"   Start/MaxLot : {adaptive_start_lot:.3f}/{adaptive_max_lot:.3f}")
         print(f"   ATR(M5)      : {atr:.2f} | ADX(M15): {adx:.1f}")
         print(f"   Spread       : {spread_price:.2f} | Max allowed: {atr * MAX_SPREAD_ATR_RATIO:.2f}")

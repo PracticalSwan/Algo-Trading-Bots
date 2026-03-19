@@ -64,11 +64,13 @@ Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
 
 | Parameter | Purpose |
 |-----------|---------|
-| `DAILY_MAX_LOSS_USD` / `DAILY_MAX_LOSS_PERCENT` | Stops trading for day if breached |
+| `DAILY_MAX_LOSS_USD` / `DAILY_MAX_LOSS_PERCENT` | Stops trading for day if that bot's own UTC-day P/L breaches the limit |
 | `MIN_EQUITY_STOP` | Emergency close-all and shutdown if equity drops below threshold |
 | `COOLDOWN_AFTER_CLOSE` | Seconds to wait after basket close before opening new positions |
 | `is_trading_allowed()` | Session guard - returns `False` on weekends or outside trading hours |
 | `MAGIC` | Unique integer per bot - filters this bot's orders from others |
+
+`GLOBAL_*` guard rails remain account-wide for parallel runtime. The daily-loss stop is bot-scoped from MT5 deal history and current open P/L for the active `SYMBOL` + `MAGIC`.
 
 ### Grid Bot Logic Flow
 

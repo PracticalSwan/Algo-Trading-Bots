@@ -7,6 +7,8 @@ import os
 import pandas as pd
 import numpy as np
 
+from daily_loss_scope import daily_loss_from_pnl, fetch_scoped_daily_pnl
+
 SUCCESS_RETCODES = {mt5.TRADE_RETCODE_DONE}
 if hasattr(mt5, "TRADE_RETCODE_DONE_PARTIAL"):
     SUCCESS_RETCODES.add(mt5.TRADE_RETCODE_DONE_PARTIAL)
@@ -280,8 +282,6 @@ def run_forex_grid_bot(config):
     write_log(f"=== {bot_title} STARTED ===")
     print(f"{bot_title} RUNNING")
 
-    current_day = None
-    daily_start_equity = None
     last_close_time = 0.0
     peak_equity = growth_base_equity
 
@@ -311,7 +311,6 @@ def run_forex_grid_bot(config):
             log_skip_once("Account free margin unavailable (free_margin/margin_free)")
             time.sleep(check_interval)
             continue
-        today = now.date()
         peak_equity = max(peak_equity, equity)
 
         growth_factor = growth_factor_from_equity(equity)
@@ -335,12 +334,17 @@ def run_forex_grid_bot(config):
             global_soft_equity_stop + max(0.0, peak_equity - growth_base_equity) * growth_equity_lock_ratio,
         )
 
-        if current_day != today or daily_start_equity is None:
-            daily_start_equity = equity
-            current_day = today
-            write_log(f"New day started. Equity baseline: ${daily_start_equity:.2f}")
-
-        daily_loss = daily_start_equity - equity
+        scoped_daily_pnl = fetch_scoped_daily_pnl(
+            mt5,
+            symbol=symbol,
+            magic=magic,
+            now=now,
+        )
+        if scoped_daily_pnl is None:
+            log_skip_once("MT5 deal history unavailable for bot-scoped daily loss")
+            time.sleep(check_interval)
+            continue
+        daily_loss = daily_loss_from_pnl(scoped_daily_pnl)
 
         all_positions = mt5.positions_get() or ()
         global_open_count = len(all_positions)
@@ -378,7 +382,7 @@ def run_forex_grid_bot(config):
             break
 
         if daily_loss >= adaptive_daily_max_loss:
-            log_skip_once(f"Daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f} limit - Closing all")
+            log_skip_once(f"Bot-scoped daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f} limit - Closing all")
             close_all_positions(reason="DAILY_LOSS")
             last_close_time = time.time()
             time.sleep(1800)
@@ -554,7 +558,10 @@ def run_forex_grid_bot(config):
         print(f"   Global Pos  : {global_open_count} / {global_max_account_positions}")
         print(f"   Start Cap   : {global_start_entry_cap} (reserve {global_position_reserve_for_expansion})")
         print(f"   Basket P/L  : ${total_profit:.2f} (TP at +${tp_target:.2f})")
-        print(f"   Global Float: ${global_floating:.2f} | Daily Loss: ${daily_loss:.2f} / ${adaptive_daily_max_loss:.2f}")
+        print(
+            f"   Global Float: ${global_floating:.2f} | Bot Day P/L: ${scoped_daily_pnl:.2f} | "
+            f"Daily Loss: ${daily_loss:.2f} / ${adaptive_daily_max_loss:.2f}"
+        )
         print(f"   Start/MaxLot: {adaptive_start_lot:.3f}/{adaptive_max_lot:.3f}")
         print(f"   ATR(M5)     : {atr_pips:.2f} pips | ADX(M15): {adx:.1f}")
         print(f"   Spread      : {spread_pips:.2f} pips | Max allowed: {max_allowed_spread:.2f}")

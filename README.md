@@ -75,6 +75,8 @@ New basket starts are throttled once the account reaches `16 - 4 = 12`
 open positions, while active baskets can still expand until the hard cap of
 `16`.
 
+`DAILY_MAX_LOSS_USD` is now bot-scoped instead of account-equity-scoped. Each bot measures its own current UTC-day P/L from MT5 deal history plus its open basket P/L, so NAS100 losses no longer trip forex daily-loss stops and one forex bot does not consume another bot's daily-loss allowance.
+
 ### Current forex profile bands
 
 | Profile | Bots | Lot multiplier | Max lot | Max levels |

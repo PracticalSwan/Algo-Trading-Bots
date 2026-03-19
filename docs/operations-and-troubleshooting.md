@@ -61,10 +61,12 @@ When changing a grid bot:
 | `SYMBOL` | Instrument name exactly as shown in MT5 |
 | `MAGIC` | Unique identifier for that bot's orders |
 | `FIXED_START_LOT` | First order lot size |
-| `DAILY_MAX_LOSS_USD` | Daily stop threshold |
+| `DAILY_MAX_LOSS_USD` | Bot-scoped daily stop threshold based on that bot's current UTC-day realized P/L plus open basket P/L |
 | `MIN_EQUITY_STOP` | Emergency equity floor |
 | `CHECK_INTERVAL` | Loop delay in seconds |
 | `COOLDOWN_AFTER_CLOSE` | Cooldown after basket close |
+
+`GLOBAL_*` parameters still protect the whole account. `DAILY_MAX_LOSS_USD` now applies only to the bot identified by the current `SYMBOL` and `MAGIC`.
 
 ### Grid-specific parameters
 
