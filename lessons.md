@@ -9,6 +9,11 @@ How to update:
 
 ---
 
+## 2026-03-19 (Shared Forex Loss And Soft Stops)
+
+- In a high-ADX, risk-off regime, full basket flattening on soft loss stops tends to realize the worst part of the move. Trimming newer expansion legs back to the oldest hedge pair preserves more recovery potential while still cutting pressure.
+- If multiple forex bots share one account and are meant to behave like one cluster, give them one shared forex-only daily-loss scope instead of separate budgets; otherwise they can all lose together while each still thinks it has room left.
+
 ## 2026-03-19 (Bot-Scoped Daily Loss)
 
 - When multiple MT5 bots share one account, daily-loss checks should not be derived from total account equity if the limit is meant to be bot-specific; that couples unrelated bots and makes one strategy consume another's daily-loss budget.

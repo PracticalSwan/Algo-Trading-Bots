@@ -13,7 +13,7 @@ Core behavior:
 - Pause new expansion when ADX suggests a strong one-way trend.
 - Filter entries when spread is too large for current volatility.
 - Close by exact MT5 ticket targeting.
-- Flatten at the end of the Asia session.
+- Pause new starts and expansions outside the Asia session while still managing existing baskets.
 
 ### NAS100 conservative grid bot
 
@@ -23,7 +23,7 @@ Core behavior:
 - wider minimum spacing for quieter ATR regimes
 - ADX trend pause
 - high-impact USD news blackout
-- optional position flattening around blocked events
+- blackout-time pause on new starts and expansions without routine forced flattening
 - growth-aware sizing and safety thresholds
 
 Current NAS100 settings:
@@ -49,7 +49,7 @@ High-level placement:
 | EURUSD, GBPUSD | Europe and the US are quieter, which often reduces directional pressure. |
 | USDCAD | North American catalysts are usually quieter during Asia hours. |
 
-All forex baskets are flattened before the London open at 08:00 UTC.
+Forex bots now stop opening or expanding baskets outside the Asia window, but they keep managing live baskets instead of auto-flattening them at 08:00 UTC.
 
 ### NAS100 grid availability: market hours, Mon-Fri
 
@@ -69,14 +69,16 @@ The NAS100 grid bot stays aligned to index market availability instead of the fo
 
 ## Current per-bot forex settings
 
-| Bot | Profile | Lot multiplier | Max lot | Max levels | Base basket TP | Daily max loss | Min equity stop |
+| Bot | Profile | Lot multiplier | Max lot | Max levels | Base basket TP | Shared forex daily max loss | Min equity stop |
 |---|---|---|---|---|---|---|---|
-| EURUSD | Aggressive | `1.22` | `0.05` | `6` | `$1.45` | `$2.90` | `$30.00` |
-| GBPUSD | Balanced | `1.12` | `0.035` | `5` | `$1.25` | `$2.30` | `$30.00` |
-| USDJPY | Balanced | `1.10` | `0.035` | `5` | `$1.20` | `$2.20` | `$30.00` |
-| AUDUSD | Conservative | `1.00` | `0.018` | `4` | `$0.78` | `$1.60` | `$30.50` |
-| NZDUSD | Conservative | `1.00` | `0.016` | `4` | `$0.75` | `$1.50` | `$30.50` |
-| USDCAD | Balanced | `1.08` | `0.030` | `5` | `$1.05` | `$2.00` | `$30.20` |
+| EURUSD | Aggressive | `1.22` | `0.05` | `6` | `$1.45` | `$3.00 (shared)` | `$30.00` |
+| GBPUSD | Balanced | `1.12` | `0.035` | `5` | `$1.25` | `$3.00 (shared)` | `$30.00` |
+| USDJPY | Balanced | `1.10` | `0.035` | `5` | `$1.20` | `$3.00 (shared)` | `$30.00` |
+| AUDUSD | Conservative | `1.00` | `0.018` | `4` | `$0.78` | `$3.00 (shared)` | `$30.50` |
+| NZDUSD | Conservative | `1.00` | `0.016` | `4` | `$0.75` | `$3.00 (shared)` | `$30.50` |
+| USDCAD | Balanced | `1.08` | `0.030` | `5` | `$1.05` | `$3.00 (shared)` | `$30.20` |
+
+Current NAS100 daily max loss: `DAILY_MAX_LOSS_USD = 2.60`
 
 ## Shared safety model
 

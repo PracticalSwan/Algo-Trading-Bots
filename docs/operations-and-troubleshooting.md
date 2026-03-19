@@ -61,12 +61,15 @@ When changing a grid bot:
 | `SYMBOL` | Instrument name exactly as shown in MT5 |
 | `MAGIC` | Unique identifier for that bot's orders |
 | `FIXED_START_LOT` | First order lot size |
-| `DAILY_MAX_LOSS_USD` | Bot-scoped daily stop threshold based on that bot's current UTC-day realized P/L plus open basket P/L |
+| `DAILY_MAX_LOSS_USD` | Daily soft-stop threshold. Forex wrappers now share one combined forex-only UTC-day P/L cap; NAS100 keeps its own bot-only UTC-day cap |
+| `DAILY_LOSS_SCOPE` | Scope selector for the loss cap. Forex wrappers use `FOREX_GROUP` to share one combined forex loss budget |
 | `MIN_EQUITY_STOP` | Emergency equity floor |
 | `CHECK_INTERVAL` | Loop delay in seconds |
 | `COOLDOWN_AFTER_CLOSE` | Cooldown after basket close |
 
-`GLOBAL_*` parameters still protect the whole account. `DAILY_MAX_LOSS_USD` now applies only to the bot identified by the current `SYMBOL` and `MAGIC`.
+`GLOBAL_*` parameters still protect the whole account. On `DAILY_MAX_LOSS_USD`, the bots now trim the newest expansion legs back to the oldest hedge/core pair and freeze new starts or expansions until the next UTC day instead of flattening the whole basket.
+
+Manual `Ctrl+C` now disconnects the bot without force-closing positions. Full close-all behavior remains for hard protections like `GLOBAL_SAFETY`, `EQUITY_STOP`, `BASKET_TP`, incomplete starts, and weekend market closure.
 
 ### Grid-specific parameters
 

@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 
-from daily_loss_scope import daily_loss_from_pnl, fetch_scoped_daily_pnl
+from daily_loss_scope import daily_loss_from_pnl, fetch_scoped_daily_pnl, select_trim_positions
 
 # ====================== CONFIG =========================
 LOGIN = YOUR_MT5_ACCOUNT_NUMBER
@@ -25,7 +25,7 @@ MAX_LEVELS = 4
 
 BASE_BASKET_TP_USD = 1.90
 TP_PER_LEVEL_USD = 0.30
-DAILY_MAX_LOSS_USD = 3.20
+DAILY_MAX_LOSS_USD = 2.60
 MIN_EQUITY_STOP = 30.50
 CHECK_INTERVAL = 8
 COOLDOWN_AFTER_CLOSE = 35
@@ -65,7 +65,7 @@ NEWS_IMPACTS = {"High"}
 NEWS_BLOCK_BEFORE_MIN = 45
 NEWS_BLOCK_AFTER_MIN = 30
 NEWS_TIME_OFFSET_HOURS = 0
-CLOSE_BEFORE_NEWS = True
+CLOSE_BEFORE_NEWS = False
 
 
 def is_trading_allowed():
@@ -311,11 +311,7 @@ def send_market_order(order_type, volume, price, comment):
     return result
 
 
-def close_all_positions(reason=""):
-    positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
-    if not positions:
-        return 0
-
+def close_positions(positions, reason=""):
     closed = 0
     for pos in positions:
         tick = mt5.symbol_info_tick(SYMBOL)
@@ -334,7 +330,7 @@ def close_all_positions(reason=""):
             "price": close_price,
             "deviation": 30,
             "magic": MAGIC,
-            "comment": "News_Close" if reason == "NEWS" else "Close_All",
+            "comment": "Close_All" if not reason else f"Close_{reason}",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": FILLING_MODE,
         }
@@ -354,6 +350,22 @@ def close_all_positions(reason=""):
             )
 
     return closed
+
+
+def close_all_positions(reason=""):
+    positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
+    if not positions:
+        return 0
+    return close_positions(positions, reason=reason)
+
+
+def trim_positions_to_core(reason=""):
+    positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
+    trim_positions = select_trim_positions(positions)
+    if not trim_positions:
+        return 0
+    # Keep the oldest hedge pair alive and shed the newest expansion risk first.
+    return close_positions(trim_positions, reason=reason)
 
 
 def main():
@@ -382,9 +394,13 @@ def main():
 
     last_close_time = 0
     peak_equity = GROWTH_BASE_EQUITY
+    soft_stop_day = None
 
     while True:
         now = datetime.now(timezone.utc)
+        today = now.date()
+        if soft_stop_day is not None and soft_stop_day != today:
+            soft_stop_day = None
 
         if not is_trading_allowed():
             positions = [p for p in (mt5.positions_get(symbol=SYMBOL) or ()) if p.magic == MAGIC]
@@ -449,6 +465,7 @@ def main():
 
         positions = [p for p in all_positions if p.symbol == SYMBOL and p.magic == MAGIC]
         total_profit = sum(p.profit for p in positions)
+        soft_stop_active = soft_stop_day == today
 
         margin_level = account.margin_level if account.margin_level and account.margin_level > 0 else None
 
@@ -477,31 +494,30 @@ def main():
             print("BOT STOPPED - EQUITY PROTECTION")
             break
 
-        if daily_loss >= adaptive_daily_max_loss:
-            log_skip_once(f"Bot-scoped daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f} limit - Closing all")
-            close_all_positions(reason="DAILY_LOSS")
-            last_close_time = time.time()
-            time.sleep(1800)
-            continue
+        if daily_loss >= adaptive_daily_max_loss and not soft_stop_active:
+            trimmed = trim_positions_to_core(reason="DAILY_LOSS_TRIM")
+            soft_stop_day = today
+            soft_stop_active = True
+            if trimmed:
+                last_close_time = time.time()
+                logger.info(
+                    f"DAILY LOSS SOFT STOP: Trimmed {trimmed} expansion positions | "
+                    f"Bot daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f}"
+                )
+            else:
+                logger.info(
+                    f"DAILY LOSS SOFT STOP: No expansion legs to trim | "
+                    f"Bot daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f}"
+                )
+            all_positions = mt5.positions_get() or ()
+            global_open_count = len(all_positions)
+            global_floating = sum(p.profit for p in all_positions)
+            positions = [p for p in all_positions if p.symbol == SYMBOL and p.magic == MAGIC]
+            total_profit = sum(p.profit for p in positions)
+
+        cooldown_active = time.time() - last_close_time < COOLDOWN_AFTER_CLOSE
 
         blackout = current_news_blackout(now)
-        if blackout:
-            if positions and CLOSE_BEFORE_NEWS:
-                logger.info(
-                    f"NEWS BLACKOUT: Closing {len(positions)} positions | {blackout['country']} {blackout['title']} @ {blackout['time'].strftime('%Y-%m-%d %H:%M')} UTC"
-                )
-                close_all_positions(reason="NEWS")
-                last_close_time = time.time()
-            else:
-                if not positions:
-                    logger.info(f"NEWS BLACKOUT: No positions to close | {blackout['country']} {blackout['title']} @ {blackout['time'].strftime('%H:%M')} UTC")
-                if not CLOSE_BEFORE_NEWS:
-                    logger.info(f"NEWS BLACKOUT: CLOSE_BEFORE_NEWS is disabled - positions remain open")
-            log_skip_once(
-                f"News blackout active ({blackout['country']} {blackout['title']} @ {blackout['time'].strftime('%H:%M')} UTC)"
-            )
-            time.sleep(CHECK_INTERVAL)
-            continue
 
         vol_df = get_data(SYMBOL, ATR_TIMEFRAME, ATR_BARS)
         trend_df = get_data(SYMBOL, TREND_TIMEFRAME, TREND_BARS)
@@ -550,10 +566,26 @@ def main():
         start_entry_cap = max(1, GLOBAL_MAX_ACCOUNT_POSITIONS - GLOBAL_POSITION_RESERVE_FOR_EXPANSION)
         start_entries_blocked = global_open_count >= start_entry_cap
         expansion_entries_blocked = global_open_count >= GLOBAL_MAX_ACCOUNT_POSITIONS
+        entry_pause_reason = None
+        if soft_stop_active:
+            entry_pause_reason = "Bot daily loss lock active until next UTC day"
+        elif blackout:
+            entry_pause_reason = (
+                f"News blackout active ({blackout['country']} {blackout['title']} @ "
+                f"{blackout['time'].strftime('%H:%M')} UTC) - managing existing basket only"
+            )
 
-        if time.time() - last_close_time < COOLDOWN_AFTER_CLOSE:
-            log_skip_once(f"Cooldown active ({COOLDOWN_AFTER_CLOSE}s after last close)")
-        elif not positions:
+        if not positions:
+            if entry_pause_reason:
+                log_skip_once(entry_pause_reason)
+                time.sleep(CHECK_INTERVAL)
+                continue
+
+            if cooldown_active:
+                log_skip_once(f"Cooldown active ({COOLDOWN_AFTER_CLOSE}s after last close)")
+                time.sleep(CHECK_INTERVAL)
+                continue
+
             if start_entries_blocked:
                 log_skip_once(
                     f"Global start cap reached ({global_open_count}/{start_entry_cap}, reserve={GLOBAL_POSITION_RESERVE_FOR_EXPANSION})"
@@ -607,7 +639,11 @@ def main():
             step_price = max(MIN_GRID_STEP_PRICE, min(MAX_GRID_STEP_PRICE, atr * GRID_ATR_MULTIPLIER))
             needed_distance = step_price * levels_now
 
-            if adx >= TREND_PAUSE_ADX:
+            if entry_pause_reason:
+                log_skip_once(entry_pause_reason)
+            elif cooldown_active:
+                log_skip_once(f"Cooldown active ({COOLDOWN_AFTER_CLOSE}s after last close)")
+            elif adx >= TREND_PAUSE_ADX:
                 log_skip_once(f"Trend too strong for expansion | ADX={adx:.1f} >= {TREND_PAUSE_ADX}")
             elif expansion_entries_blocked:
                 log_skip_once(f"Global hard cap reached ({global_open_count}/{GLOBAL_MAX_ACCOUNT_POSITIONS})")
@@ -678,7 +714,6 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        close_all_positions(reason="MANUAL_STOP")
         logger.info("Bot stopped by user")
         print("\nBot stopped by user")
     finally:

@@ -14,11 +14,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Updated repo documentation, workflow guidance, and ignore rules to remove current-state references to the deleted NAS100 trend bot while preserving historical changelog entries.
 - Retuned `nas100_grid_bot.py` and `nas100_grid_bot.py.template` from aggressive to conservative for current Exness `USTECm` conditions by setting `LOT_MULTIPLIER=1.00`, `MAX_LOT=0.02`, `MAX_LEVELS=4`, `GROWTH_LOT_EXPONENT=0.50`, `GRID_ATR_MULTIPLIER=1.00`, and `MIN_GRID_STEP_PRICE=18.0`.
 - Updated current-state docs and workflow guidance to reflect NAS100 as the conservative, news-aware `USTECm` grid variant.
-- Reworked daily-loss enforcement so each bot now uses its own `SYMBOL` + `MAGIC` scoped UTC-day P/L from MT5 deal history and open positions, separating all forex wrappers from NAS100 and from each other while keeping `GLOBAL_*` guards account-wide.
+- Reworked daily-loss enforcement so the six forex wrappers now share one combined forex-only UTC-day loss scope with `DAILY_MAX_LOSS_USD = 3.00`, while NAS100 uses its own tighter `DAILY_MAX_LOSS_USD = 2.60`.
+- Replaced soft-stop full flattening on `DAILY_LOSS` with trim-to-core behavior that closes only newer expansion legs and freezes new starts or expansions until the next UTC day.
+- Changed forex session-end handling to pause new starts and expansions outside the Asia window instead of auto-flattening active baskets.
+- Changed NAS100 news blackout handling to pause new starts and expansions instead of force-closing positions, and removed the manual-stop flatten on `Ctrl+C`.
 
 ### Added
-- Added `daily_loss_scope.py` as a shared helper for bot-scoped daily P/L calculations.
-- Added `tests/test_daily_loss_scope.py` to lock in bot-scoped daily-loss behavior and helper wiring.
+- Added `daily_loss_scope.py` as a shared helper for grouped forex and bot-specific daily P/L calculations plus trim-to-core selection.
+- Added `tests/test_daily_loss_scope.py` to lock in grouped forex loss scope, trim-to-core selection, and soft-stop wiring.
 
 
 ## [1.0.8] — 2026-03-17

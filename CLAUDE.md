@@ -54,23 +54,23 @@ Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
 - Close entire basket when cumulative floating profit reaches `BASKET_TP_USD`
 - Some profiles use multiplier-based sizing while conservative profiles use fixed-lot behavior
 - Trade Asia session only: 22:00-08:00 UTC, weekdays only
-- Auto-close all positions at session end (08:00 UTC) before London open
+- Pause new starts and expansions outside the Asia session while keeping active baskets managed
 
 **NAS100 Grid Bot** (`nas100_grid_bot.py`):
 - Conservative USTEC grid with ATR-adaptive step size, ADX trend filter, and high-impact USD news blackout
-- Trades all available market hours on weekdays and supports optional pre-news flattening
+- Trades all available market hours on weekdays and now pauses around blackout periods instead of routine forced flattening
 
 ### Shared Risk Controls (all bots)
 
 | Parameter | Purpose |
 |-----------|---------|
-| `DAILY_MAX_LOSS_USD` / `DAILY_MAX_LOSS_PERCENT` | Stops trading for day if that bot's own UTC-day P/L breaches the limit |
+| `DAILY_MAX_LOSS_USD` / `DAILY_MAX_LOSS_PERCENT` | Soft-stop threshold. Forex wrappers can share a combined forex-only UTC-day P/L cap; NAS100 uses its own bot scope |
 | `MIN_EQUITY_STOP` | Emergency close-all and shutdown if equity drops below threshold |
 | `COOLDOWN_AFTER_CLOSE` | Seconds to wait after basket close before opening new positions |
 | `is_trading_allowed()` | Session guard - returns `False` on weekends or outside trading hours |
 | `MAGIC` | Unique integer per bot - filters this bot's orders from others |
 
-`GLOBAL_*` guard rails remain account-wide for parallel runtime. The daily-loss stop is bot-scoped from MT5 deal history and current open P/L for the active `SYMBOL` + `MAGIC`.
+`GLOBAL_*` guard rails remain account-wide for parallel runtime. The current loss flow uses trim-to-core soft stops for `DAILY_MAX_LOSS_USD`, while full close-all remains reserved for hard safety events, basket TP, incomplete starts, and weekend market closure.
 
 ### Grid Bot Logic Flow
 

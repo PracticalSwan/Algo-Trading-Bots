@@ -7,7 +7,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from daily_loss_scope import daily_loss_from_pnl, fetch_scoped_daily_pnl
+from daily_loss_scope import FOREX_GROUP_MEMBERS, daily_loss_from_pnl, fetch_scoped_daily_pnl, select_trim_positions
 
 SUCCESS_RETCODES = {mt5.TRADE_RETCODE_DONE}
 if hasattr(mt5, "TRADE_RETCODE_DONE_PARTIAL"):
@@ -149,11 +149,14 @@ def run_forex_grid_bot(config):
     grid_buy_comment = config["GRID_BUY_COMMENT"]
     grid_sell_comment = config["GRID_SELL_COMMENT"]
     price_digits = config["PRICE_DIGITS"]
+    daily_loss_scope = config.get("DAILY_LOSS_SCOPE", "BOT")
+    daily_loss_scope_members = FOREX_GROUP_MEMBERS if daily_loss_scope == "FOREX_GROUP" else None
+    daily_loss_scope_label = "Forex group" if daily_loss_scope_members is not None else "Bot"
 
-    def is_trading_allowed():
-        now = datetime.now(timezone.utc)
-        if now.weekday() >= 5:
-            return False
+    def is_weekend(now):
+        return now.weekday() >= 5
+
+    def is_entry_session_open(now):
         hour = now.hour
         return 22 <= hour or hour < 8
 
@@ -218,11 +221,7 @@ def run_forex_grid_bot(config):
             free_margin = getattr(account, "margin_free", None)
         return float(free_margin) if free_margin is not None else None
 
-    def close_all_positions(reason=""):
-        positions = [p for p in (mt5.positions_get(symbol=symbol) or ()) if p.magic == magic]
-        if not positions:
-            return 0
-
+    def close_positions(positions, reason=""):
         closed = 0
         for pos in positions:
             tick = mt5.symbol_info_tick(symbol)
@@ -262,6 +261,20 @@ def run_forex_grid_bot(config):
 
         return closed
 
+    def close_all_positions(reason=""):
+        positions = [p for p in (mt5.positions_get(symbol=symbol) or ()) if p.magic == magic]
+        if not positions:
+            return 0
+        return close_positions(positions, reason=reason)
+
+    def trim_positions_to_core(reason=""):
+        positions = [p for p in (mt5.positions_get(symbol=symbol) or ()) if p.magic == magic]
+        trim_positions = select_trim_positions(positions)
+        if not trim_positions:
+            return 0
+        # Trim newest expansion legs first and keep the oldest hedge pair alive for recovery.
+        return close_positions(trim_positions, reason=reason)
+
     if not mt5.initialize(login=login, password=password, server=server):
         log_error("MT5 initialize failed!")
         return
@@ -284,19 +297,24 @@ def run_forex_grid_bot(config):
 
     last_close_time = 0.0
     peak_equity = growth_base_equity
+    soft_stop_day = None
 
     while True:
         now = datetime.now(timezone.utc)
+        today = now.date()
+        if soft_stop_day is not None and soft_stop_day != today:
+            soft_stop_day = None
 
-        if not is_trading_allowed():
+        if is_weekend(now):
             my_positions = [p for p in (mt5.positions_get(symbol=symbol) or ()) if p.magic == magic]
             if my_positions:
-                logger.info(f"SESSION END: Closing {len(my_positions)} positions for safety")
-                close_all_positions(reason="SESSION_END")
+                logger.info(f"WEEKEND SAFETY: Closing {len(my_positions)} positions")
+                close_all_positions(reason="WEEKEND")
                 last_close_time = time.time()
-            log_skip_once("Outside Asia session (22:00-08:00 UTC)")
+            log_skip_once("Weekend - forex market closed")
             time.sleep(300)
             continue
+        session_open = is_entry_session_open(now)
 
         account = mt5.account_info()
         if not account:
@@ -336,8 +354,9 @@ def run_forex_grid_bot(config):
 
         scoped_daily_pnl = fetch_scoped_daily_pnl(
             mt5,
-            symbol=symbol,
-            magic=magic,
+            symbol=symbol if daily_loss_scope_members is None else None,
+            magic=magic if daily_loss_scope_members is None else None,
+            members=daily_loss_scope_members,
             now=now,
         )
         if scoped_daily_pnl is None:
@@ -352,6 +371,7 @@ def run_forex_grid_bot(config):
 
         my_positions = [p for p in all_positions if p.symbol == symbol and p.magic == magic]
         total_profit = sum(p.profit for p in my_positions)
+        soft_stop_active = soft_stop_day == today
 
         margin_level = account.margin_level if account.margin_level and account.margin_level > 0 else None
 
@@ -381,17 +401,28 @@ def run_forex_grid_bot(config):
             print("BOT STOPPED - EQUITY PROTECTION")
             break
 
-        if daily_loss >= adaptive_daily_max_loss:
-            log_skip_once(f"Bot-scoped daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f} limit - Closing all")
-            close_all_positions(reason="DAILY_LOSS")
-            last_close_time = time.time()
-            time.sleep(1800)
-            continue
+        if daily_loss >= adaptive_daily_max_loss and not soft_stop_active:
+            trimmed = trim_positions_to_core(reason="DAILY_LOSS_TRIM")
+            soft_stop_day = today
+            soft_stop_active = True
+            if trimmed:
+                last_close_time = time.time()
+                logger.info(
+                    f"DAILY LOSS SOFT STOP: Trimmed {trimmed} expansion positions | "
+                    f"{daily_loss_scope_label} daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f}"
+                )
+            else:
+                logger.info(
+                    f"DAILY LOSS SOFT STOP: No expansion legs to trim | "
+                    f"{daily_loss_scope_label} daily loss ${daily_loss:.2f} >= ${adaptive_daily_max_loss:.2f}"
+                )
+            all_positions = mt5.positions_get() or ()
+            global_open_count = len(all_positions)
+            global_floating = sum(p.profit for p in all_positions)
+            my_positions = [p for p in all_positions if p.symbol == symbol and p.magic == magic]
+            total_profit = sum(p.profit for p in my_positions)
 
-        if time.time() - last_close_time < cooldown_after_close:
-            log_skip_once(f"Cooldown active ({cooldown_after_close}s after last close)")
-            time.sleep(check_interval)
-            continue
+        cooldown_active = time.time() - last_close_time < cooldown_after_close
 
         vol_df = get_data(symbol, atr_timeframe, atr_bars)
         trend_df = get_data(symbol, trend_timeframe, trend_bars)
@@ -447,8 +478,23 @@ def run_forex_grid_bot(config):
 
         start_entries_blocked = global_open_count >= global_start_entry_cap
         expansion_entries_blocked = global_open_count >= global_max_account_positions
+        entry_pause_reason = None
+        if soft_stop_active:
+            entry_pause_reason = f"{daily_loss_scope_label} daily loss lock active until next UTC day"
+        elif not session_open:
+            entry_pause_reason = "Outside Asia session - managing existing basket only"
 
         if not my_positions:
+            if entry_pause_reason:
+                log_skip_once(entry_pause_reason)
+                time.sleep(check_interval)
+                continue
+
+            if cooldown_active:
+                log_skip_once(f"Cooldown active ({cooldown_after_close}s after last close)")
+                time.sleep(check_interval)
+                continue
+
             if start_entries_blocked:
                 log_skip_once(
                     f"Global start cap reached ({global_open_count}/{global_start_entry_cap}, reserve={global_position_reserve_for_expansion})"
@@ -510,7 +556,11 @@ def run_forex_grid_bot(config):
             step_pips = max(min_grid_step_pips, min(max_grid_step_pips, atr_pips * grid_atr_multiplier))
             needed_distance = step_pips * levels_now
 
-            if adx >= trend_pause_adx:
+            if entry_pause_reason:
+                log_skip_once(entry_pause_reason)
+            elif cooldown_active:
+                log_skip_once(f"Cooldown active ({cooldown_after_close}s after last close)")
+            elif adx >= trend_pause_adx:
                 log_skip_once(f"Trend too strong for expansion | ADX={adx:.1f} >= {trend_pause_adx}")
             elif expansion_entries_blocked:
                 log_skip_once(
@@ -559,14 +609,15 @@ def run_forex_grid_bot(config):
         print(f"   Start Cap   : {global_start_entry_cap} (reserve {global_position_reserve_for_expansion})")
         print(f"   Basket P/L  : ${total_profit:.2f} (TP at +${tp_target:.2f})")
         print(
-            f"   Global Float: ${global_floating:.2f} | Bot Day P/L: ${scoped_daily_pnl:.2f} | "
+            f"   Global Float: ${global_floating:.2f} | {daily_loss_scope_label} Day P/L: ${scoped_daily_pnl:.2f} | "
             f"Daily Loss: ${daily_loss:.2f} / ${adaptive_daily_max_loss:.2f}"
         )
         print(f"   Start/MaxLot: {adaptive_start_lot:.3f}/{adaptive_max_lot:.3f}")
         print(f"   ATR(M5)     : {atr_pips:.2f} pips | ADX(M15): {adx:.1f}")
         print(f"   Spread      : {spread_pips:.2f} pips | Max allowed: {max_allowed_spread:.2f}")
         print(f"   Free Margin : ${free_margin:.2f} | Margin Level: {margin_level if margin_level is not None else 0:.1f}%")
-        print(f"   Time        : {now.strftime('%Y-%m-%d %H:%M:%S')} UTC (Asia Session)")
+        session_label = "Asia Session" if session_open else "Outside Asia Session - Core Management Only"
+        print(f"   Time        : {now.strftime('%Y-%m-%d %H:%M:%S')} UTC ({session_label})")
         print("=" * 95)
 
         time.sleep(check_interval)

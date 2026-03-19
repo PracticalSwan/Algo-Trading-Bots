@@ -75,7 +75,9 @@ New basket starts are throttled once the account reaches `16 - 4 = 12`
 open positions, while active baskets can still expand until the hard cap of
 `16`.
 
-`DAILY_MAX_LOSS_USD` is now bot-scoped instead of account-equity-scoped. Each bot measures its own current UTC-day P/L from MT5 deal history plus its open basket P/L, so NAS100 losses no longer trip forex daily-loss stops and one forex bot does not consume another bot's daily-loss allowance.
+The six forex wrappers now share one combined forex-only `DAILY_MAX_LOSS_USD = 3.00` cap across their current UTC-day realized and open P/L, while NAS100 keeps its own tighter `DAILY_MAX_LOSS_USD = 2.60`.
+
+When that soft loss limit is hit, the bots now trim the newest expansion legs back to the oldest hedge/core pair and freeze new starts or expansions until the next UTC day instead of flattening the whole basket.
 
 ### Current forex profile bands
 

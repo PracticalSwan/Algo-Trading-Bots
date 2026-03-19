@@ -64,6 +64,47 @@ class DailyLossScopeTests(unittest.TestCase):
             ),
         )
 
+    def test_grouped_daily_pnl_counts_only_configured_members(self) -> None:
+        from daily_loss_scope import calculate_scoped_daily_pnl
+
+        members = {
+            ("EURUSDm", 20250311),
+            ("GBPUSDm", 20250314),
+        }
+        deals = [
+            SimpleNamespace(symbol="EURUSDm", magic=20250311, profit=-0.80, commission=-0.05, swap=0.00, fee=0.00),
+            SimpleNamespace(symbol="GBPUSDm", magic=20250314, profit=-1.20, commission=-0.04, swap=0.00, fee=0.00),
+            SimpleNamespace(symbol="USDJPYm", magic=20250315, profit=-2.50, commission=0.00, swap=0.00, fee=0.00),
+        ]
+        positions = [
+            SimpleNamespace(symbol="EURUSDm", magic=20250311, profit=-0.35, swap=-0.01),
+            SimpleNamespace(symbol="GBPUSDm", magic=20250314, profit=0.20, swap=0.00),
+            SimpleNamespace(symbol="USTECm", magic=2026031301, profit=-9.00, swap=0.00),
+        ]
+
+        pnl = calculate_scoped_daily_pnl(
+            deals,
+            positions,
+            members=members,
+        )
+
+        self.assertAlmostEqual(pnl, -2.25)
+
+    def test_select_trim_positions_keeps_oldest_buy_and_sell_core(self) -> None:
+        from daily_loss_scope import select_trim_positions
+
+        positions = [
+            SimpleNamespace(ticket=101, type=0, time=10),
+            SimpleNamespace(ticket=202, type=1, time=12),
+            SimpleNamespace(ticket=303, type=0, time=20),
+            SimpleNamespace(ticket=404, type=0, time=30),
+            SimpleNamespace(ticket=505, type=1, time=40),
+        ]
+
+        to_close = select_trim_positions(positions)
+
+        self.assertEqual([p.ticket for p in to_close], [505, 404, 303])
+
     def test_runtimes_use_scoped_daily_pnl_helper(self) -> None:
         forex_source = (ROOT / "forex_grid_engine.py").read_text(encoding="utf-8")
         nas100_source = (ROOT / "nas100_grid_bot.py").read_text(encoding="utf-8")
@@ -72,6 +113,14 @@ class DailyLossScopeTests(unittest.TestCase):
         self.assertIn("fetch_scoped_daily_pnl", nas100_source)
         self.assertNotIn("daily_start_equity = None", forex_source)
         self.assertNotIn("daily_start_equity = None", nas100_source)
+        self.assertIn("FOREX_GROUP_MEMBERS", forex_source)
+        self.assertIn("trim_positions_to_core", forex_source)
+        self.assertIn("soft_stop_day", forex_source)
+        self.assertNotIn('close_all_positions(reason="SESSION_END")', forex_source)
+        self.assertIn("trim_positions_to_core", nas100_source)
+        self.assertIn("soft_stop_day", nas100_source)
+        self.assertNotIn('close_all_positions(reason="MANUAL_STOP")', nas100_source)
+        self.assertNotIn('close_all_positions(reason="NEWS")', nas100_source)
 
 
 if __name__ == "__main__":
