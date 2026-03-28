@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - Updated `.gitignore` so `.github/` is no longer ignored and added common virtual-environment/cache entries.
 - Refreshed `README.md`, `CLAUDE.md`, and supporting docs to reflect the current credential-template workflow, validation steps, and repository maintenance surface.
+- Hardened CI and local validation guidance to use unittest discovery, and added `tests/__init__.py` so the repository test package is not shadowed by unrelated top-level `tests` packages on CI runners.
 
 ## [1.1] - 2026-03-20
 

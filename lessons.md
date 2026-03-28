@@ -9,6 +9,11 @@ How to update:
 
 ---
 
+## 2026-03-28 (CI Test Package Shadowing)
+
+- `python -m unittest tests.test_daily_loss_scope` is brittle on shared runners because a different top-level `tests` package can be resolved before the repo's test directory if `tests/` is not an explicit package.
+- The safer pattern here is to add `tests/__init__.py` and run `python -m unittest discover -s tests -p "test_*.py"` in CI and docs so validation does not depend on ambiguous package resolution.
+
 ## 2026-03-28 (GitHub Repo Kit And Docs Hygiene)
 
 - If a repository expects tracked GitHub workflows, issue templates, or workspace skills, `.gitignore` must not blanket-ignore `.github/`; otherwise the repo can look complete locally while silently blocking the files that make the public project usable.

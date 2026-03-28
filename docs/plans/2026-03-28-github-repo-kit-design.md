@@ -95,5 +95,5 @@ This intentionally avoids pretending MT5 integration can run inside CI.
 
 - verify local links and referenced files still exist
 - run `python -m py_compile` against tracked Python sources and templates
-- run `python -m unittest tests.test_daily_loss_scope`
+- run `python -m unittest discover -s tests -p "test_*.py"`
 - review `git status --short` to confirm the intended tracked file set

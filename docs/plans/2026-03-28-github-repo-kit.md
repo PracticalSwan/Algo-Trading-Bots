@@ -58,7 +58,7 @@ The CI workflow must:
 - install Python
 - install `requirements.txt`
 - compile tracked `.py` and `.template.py` files
-- run `python -m unittest tests.test_daily_loss_scope`
+- run `python -m unittest discover -s tests -p "test_*.py"`
 
 **Step 3: Sanity check the workflow file**
 
@@ -107,7 +107,7 @@ Record the repository/community/CI additions in `CHANGELOG.md` without implying 
 
 Run:
 - `python -m py_compile daily_loss_scope.py forex_grid_engine.py eurusd_grid_bot.py.template gbpusd_grid_bot.py.template usdjpy_grid_bot.py.template audusd_grid_bot.py.template nzdusd_grid_bot.py.template usdcad_grid_bot.py.template nas100_grid_bot.py.template`
-- `python -m unittest tests.test_daily_loss_scope`
+- `python -m unittest discover -s tests -p "test_*.py"`
 
 Expected:
 - `py_compile` exits successfully

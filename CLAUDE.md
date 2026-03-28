@@ -63,7 +63,7 @@ for path in files:
 print(f"Compiled {len(files)} files successfully")
 '@ | python -
 
-python -m unittest tests.test_daily_loss_scope -v
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 ### View live logs
