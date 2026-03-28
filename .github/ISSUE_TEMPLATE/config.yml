@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Operations and troubleshooting guide
+    url: https://github.com/PracticalSwan/Algo-Trading-Bots/blob/main/docs/operations-and-troubleshooting.md
+    about: Check the MT5 setup, runtime, and troubleshooting guide before opening a bug.
+  - name: Security policy
+    url: https://github.com/PracticalSwan/Algo-Trading-Bots/blob/main/SECURITY.md
+    about: Use the security policy for vulnerabilities, leaked credentials, or sensitive disclosures.

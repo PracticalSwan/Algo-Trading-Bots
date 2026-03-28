@@ -1,18 +1,22 @@
 # Exness MT5 Trading Bots
 
-Automated MetaTrader 5 bots for Exness-focused forex grid trading plus one NAS100 grid strategy:
+Automated MetaTrader 5 bots for Exness-focused grid trading, built around a shared forex grid engine plus one conservative NAS100 grid variant.
 
-- 6 forex grid wrappers that share `forex_grid_engine.py`
-- 1 conservative NAS100 grid bot
+This repository is intentionally application-first rather than package-first. It is designed for running and maintaining MT5 bot scripts, not for publishing a Python library.
 
-The README is intentionally short.
-Use it as the front door, then jump into the focused docs for setup,
-tuning details, and troubleshooting.
+## Risk warning
+
+Trading forex and CFDs on margin is high risk.
+
+- Test on demo first.
+- Keep sizing conservative.
+- Do not run these bots without understanding the account-wide drawdown controls.
+- Never commit live MT5 credentials or account-specific local bot files.
 
 ## Bot lineup
 
-| Bot | Template | Symbol | Session (UTC) | Style |
-|---|---|---|---|---|
+| Bot | Tracked template | Symbol | Session (UTC) | Style |
+| --- | --- | --- | --- | --- |
 | `eurusd_grid_bot.py` | `eurusd_grid_bot.py.template` | `EURUSDm` | 22:00-08:00 | Grid, Aggressive |
 | `gbpusd_grid_bot.py` | `gbpusd_grid_bot.py.template` | `GBPUSDm` | 22:00-08:00 | Grid, Balanced |
 | `usdjpy_grid_bot.py` | `usdjpy_grid_bot.py.template` | `USDJPYm` | 22:00-08:00 | Grid, Balanced |
@@ -21,46 +25,62 @@ tuning details, and troubleshooting.
 | `usdcad_grid_bot.py` | `usdcad_grid_bot.py.template` | `USDCADm` | 22:00-08:00 | Grid, Balanced |
 | `nas100_grid_bot.py` | `nas100_grid_bot.py.template` | `USTECm` | Market hours, Mon-Fri | Grid, Conservative |
 
+## What the repo contains
+
+- `forex_grid_engine.py`: shared execution, adaptive spacing, and safety logic for the six forex wrappers
+- `*_grid_bot.py.template`: tracked bot templates with placeholder credentials
+- local `*_grid_bot.py` files: credential-bearing runtime copies for your machine only
+- `daily_loss_scope.py`: helper logic for daily loss scoping and trim-to-core behavior
+- `tests/test_daily_loss_scope.py`: regression coverage for daily-loss helper behavior
+
 ## Quick start
 
-1. Install and log into the MT5 desktop terminal.
+1. Install MetaTrader 5 and log in with your Exness account.
 2. Install Python dependencies:
 
 ```powershell
-pip install MetaTrader5 pandas numpy
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-3. Copy a template to a local bot file:
+3. Create a local bot file from a tracked template:
 
 ```powershell
-Copy-Item eurusd_grid_bot.py.template eurusd_grid_bot.py
+Copy-Item usdjpy_grid_bot.py.template usdjpy_grid_bot.py
 ```
 
-4. Fill in `LOGIN`, `PASSWORD`, `SERVER`, and verify `SYMBOL` matches MT5 exactly.
-5. Keep MT5 open, then run the bot:
+4. Fill in `LOGIN`, `PASSWORD`, and `SERVER`, then verify `SYMBOL` matches MT5 exactly.
+5. Keep MT5 open and logged in, then run the bot:
 
 ```powershell
-python eurusd_grid_bot.py
+python usdjpy_grid_bot.py
 ```
 
-6. Watch the daily log:
+6. Watch the runtime log:
 
 ```powershell
-Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
+Get-Content logs\usdjpy_grid_bot_YYYYMMDD.log -Wait -Tail 30
 ```
 
-Forex grid wrappers will not run without `forex_grid_engine.py` in the same folder.
+For forex wrappers, keep `forex_grid_engine.py` in the same folder as the bot wrapper.
 
-## What matters most
+## Credential workflow
 
-### Credential workflow
+Tracked source of truth:
+- `*_grid_bot.py.template`
+- `nas100_grid_bot.py.template`
+- shared tracked files such as `forex_grid_engine.py`
 
-- `*_grid_bot.py.template` files are the tracked source of truth.
-- Local `*_grid_bot.py` files contain credentials and are kept out of version control.
-- When grid logic changes, update the `.template` file first, then sync the local bot file.
-- `forex_grid_engine.py` is tracked directly.
+Local-only runtime files:
+- `*_grid_bot.py`
+- `nas100_grid_bot.py`
 
-### Shared safety model
+Rules:
+- Edit the template file first when changing wrapper logic or config.
+- Sync the same change into your local credential-bearing copy afterward.
+- Do not commit live credentials, account IDs, or secret-bearing local bot files.
+
+## Shared safety model
 
 All grid bots are tuned for parallel runtime on the same account and share the same account-level guard rails:
 
@@ -71,54 +91,89 @@ All grid bots are tuned for parallel runtime on the same account and share the s
 - `GLOBAL_MIN_MARGIN_LEVEL_PCT = 250.0`
 - `GLOBAL_SOFT_EQUITY_STOP = 29.00`
 
-New basket starts are throttled once the account reaches `16 - 4 = 12`
-open positions, while active baskets can still expand until the hard cap of
-`16`.
+New basket starts are throttled once the account reaches `16 - 4 = 12` open positions, while active baskets may still expand until the hard cap of `16`.
 
-The six forex wrappers now share one combined forex-only `DAILY_MAX_LOSS_USD = 3.00` cap across their current UTC-day realized and open P/L, while NAS100 keeps its own tighter `DAILY_MAX_LOSS_USD = 2.60`.
+The six forex wrappers share one combined forex-only UTC-day `DAILY_MAX_LOSS_USD = 3.00` budget. NAS100 keeps its own tighter `DAILY_MAX_LOSS_USD = 2.60` scope.
 
-When that soft loss limit is hit, the bots now trim the newest expansion legs back to the oldest hedge/core pair and freeze new starts or expansions until the next UTC day instead of flattening the whole basket.
+When that soft loss limit is hit, the bots now trim newer expansion legs back to the oldest hedge/core pair and freeze new starts or expansions until the next UTC day instead of flattening the whole basket.
 
-### Current forex profile bands
+Manual `Ctrl+C` stops the script loop and disconnects from MT5. It is not documented as a force-close shortcut for all positions.
+
+## Current forex profile ranges
 
 | Profile | Bots | Lot multiplier | Max lot | Max levels |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Aggressive | EURUSD | `1.20-1.22` | `0.04-0.05` | `6` |
 | Balanced | GBPUSD, USDJPY, USDCAD | `1.08-1.14` | `0.03-0.04` | `5` |
 | Conservative | AUDUSD, NZDUSD | `1.00` | `0.015-0.02` | `4` |
 
-NAS100 sits outside those forex bands:
+NAS100 sits outside those forex bands with conservative `USTECm` tuning:
 
-- `nas100_grid_bot.py` is the conservative, news-aware grid variant for `USTECm`.
-- Current live tuning is `LOT_MULTIPLIER=1.00`, `MAX_LOT=0.02`, `MAX_LEVELS=4`, `GROWTH_LOT_EXPONENT=0.50`, `GRID_ATR_MULTIPLIER=1.00`, and `MIN_GRID_STEP_PRICE=18.0`.
+- `LOT_MULTIPLIER = 1.00`
+- `MAX_LOT = 0.02`
+- `MAX_LEVELS = 4`
+- `GROWTH_LOT_EXPONENT = 0.50`
+- `GRID_ATR_MULTIPLIER = 1.00`
+- `MIN_GRID_STEP_PRICE = 18.0`
+
+## Development and verification
+
+This repo includes a lightweight Windows GitHub Actions workflow that checks syntax/compile health and runs `tests/test_daily_loss_scope.py`.
+
+You can run the same validation locally:
+
+```powershell
+@'
+import py_compile
+
+files = [
+    "daily_loss_scope.py",
+    "forex_grid_engine.py",
+    "eurusd_grid_bot.py.template",
+    "gbpusd_grid_bot.py.template",
+    "usdjpy_grid_bot.py.template",
+    "audusd_grid_bot.py.template",
+    "nzdusd_grid_bot.py.template",
+    "usdcad_grid_bot.py.template",
+    "nas100_grid_bot.py.template",
+    "tests/test_daily_loss_scope.py",
+]
+
+for path in files:
+    py_compile.compile(path, doraise=True)
+
+print(f"Compiled {len(files)} files successfully")
+'@ | python -
+
+python -m unittest tests.test_daily_loss_scope -v
+```
 
 ## Docs map
 
-- [MT5 setup guide](docs/mt5-setup.md) - Exness setup and first-run checklist.
-- [Strategy and profiles](docs/strategy-and-profiles.md) - Strategy summary,
-  session rationale, and live forex settings.
-- [Operations and troubleshooting](docs/operations-and-troubleshooting.md) -
-  Daily usage, customization, logs, and common failure modes.
-- [CHANGELOG](CHANGELOG.md) - Versioned behavior and tuning history.
+- [MT5 setup guide](docs/mt5-setup.md)
+- [Strategy and profiles](docs/strategy-and-profiles.md)
+- [Operations and troubleshooting](docs/operations-and-troubleshooting.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Changelog](CHANGELOG.md)
+- [License](LICENSE)
 
 ## Repo layout
 
 ```text
 Exness_Bot/
 |-- forex_grid_engine.py
+|-- daily_loss_scope.py
 |-- *_grid_bot.py.template
-|-- *_grid_bot.py
 |-- nas100_grid_bot.py.template
-|-- nas100_grid_bot.py
 |-- docs/
-|-- logs/
+|-- tests/
+|-- .github/
+|-- requirements.txt
 |-- README.md
 |-- CHANGELOG.md
-|-- CLAUDE.md
+|-- CONTRIBUTING.md
+|-- SECURITY.md
+|-- LICENSE
 ```
-
-## Risk warning
-
-Trading forex and CFDs on margin is high risk.
-Test on demo first, keep sizing conservative, and do not run these bots
-without understanding the account-wide drawdown controls.

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 When Serena tools are available, always run this sequence for memory preservation and context continuity:
 
-1. Read the Serena skill: `C:/Users/LOQ/.copilot/skills/serena-usage/SKILL.md`
+1. Read the Serena skill: `C:/Users/LOQ/.agents/skills/serena-usage/SKILL.md`
 2. Verify activation: call `mcp_oraios_serena_get_current_config`
 3. If no active project, activate/select `Exness_Bot` first
 4. Check onboarding: call `mcp_oraios_serena_check_onboarding_performed`
@@ -29,14 +29,42 @@ python usdjpy_grid_bot.py
 python nas100_grid_bot.py
 ```
 
-Each bot runs indefinitely in a loop until stopped with `Ctrl+C` (which safely closes all positions).
+Each bot runs indefinitely in a loop until stopped with `Ctrl+C`, which disconnects the script cleanly from MT5.
 
 ### Install dependencies
 ```powershell
-pip install MetaTrader5 pandas numpy
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
 `pandas` and `numpy` are required by the shared grid engine and NAS100 grid bot.
+
+### Lightweight validation
+```powershell
+@'
+import py_compile
+
+files = [
+    "daily_loss_scope.py",
+    "forex_grid_engine.py",
+    "eurusd_grid_bot.py.template",
+    "gbpusd_grid_bot.py.template",
+    "usdjpy_grid_bot.py.template",
+    "audusd_grid_bot.py.template",
+    "nzdusd_grid_bot.py.template",
+    "usdcad_grid_bot.py.template",
+    "nas100_grid_bot.py.template",
+    "tests/test_daily_loss_scope.py",
+]
+
+for path in files:
+    py_compile.compile(path, doraise=True)
+
+print(f"Compiled {len(files)} files successfully")
+'@ | python -
+
+python -m unittest tests.test_daily_loss_scope -v
+```
 
 ### View live logs
 ```powershell
@@ -78,7 +106,7 @@ Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
 2. **Grid expansion**: Add new levels only after ATR-adaptive distance thresholds and spread/trend filters pass
 3. **Lot sizing**: `FIXED_START_LOT x (LOT_MULTIPLIER ^ level_number)` with symbol-normalization and `MAX_LOT` cap
 4. **Exit**: Close all positions when `total_profit >= BASKET_TP_USD`
-5. **Safety**: Enforce account-wide parallel guards, equity stops, and session-end flattening
+5. **Safety**: Enforce account-wide parallel guards, equity stops, and session-aware start/expansion pauses
 
 ## File Structure
 
@@ -87,11 +115,17 @@ Exness_Bot/
 |-- *_grid_bot.py          # Grid bots with credentials (gitignored - local use only)
 |-- *_grid_bot.py.template # Grid bot templates WITHOUT credentials (tracked in git)
 |-- forex_grid_engine.py   # Shared forex grid execution/risk engine
+|-- daily_loss_scope.py    # Shared daily-loss scope and trim-to-core helper logic
 |-- nas100_grid_bot.py     # Conservative NAS100 grid bot with news blackout (gitignored)
 |-- nas100_grid_bot.py.template # NAS100 grid bot template WITHOUT credentials (tracked)
+|-- tests/                 # Lightweight regression tests
+|-- .github/               # GitHub templates, workflows, and workspace skill files
+|-- requirements.txt       # Runtime dependency manifest
 |-- .gitignore             # Excludes grid bots with credentials from version control
 |-- lessons.md             # Persistent lessons learned from implementation work
 |-- logs/                  # Auto-created, daily rotating logs (gitignored)
+|-- CONTRIBUTING.md        # Contributor workflow and local validation
+|-- SECURITY.md            # Vulnerability reporting and secret-handling guidance
 |-- CLAUDE.md              # This file
 |-- README.md              # User documentation
 ```

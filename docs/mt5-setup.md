@@ -41,7 +41,8 @@ Examples:
 ## 4. Install Python dependencies
 
 ```powershell
-pip install MetaTrader5 pandas numpy
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
 ## 5. Verify Python can reach MT5
@@ -82,6 +83,7 @@ Important:
 - Local `*_grid_bot.py` files are for your machine only.
 - The tracked templates are the repo source of truth.
 - If you later change grid logic, edit the template first and sync the local file after that.
+- Do not commit local runtime files with real credentials.
 
 ## 7. Run the bot
 
@@ -99,3 +101,4 @@ If you are using a forex grid wrapper, keep `forex_grid_engine.py` in the same d
 - Algorithmic trading is enabled in MT5.
 - Python dependencies are installed.
 - You are starting on a demo account first.
+- You are working from a tracked template plus a local credential-bearing copy.

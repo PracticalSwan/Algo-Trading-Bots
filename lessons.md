@@ -9,6 +9,11 @@ How to update:
 
 ---
 
+## 2026-03-28 (GitHub Repo Kit And Docs Hygiene)
+
+- If a repository expects tracked GitHub workflows, issue templates, or workspace skills, `.gitignore` must not blanket-ignore `.github/`; otherwise the repo can look complete locally while silently blocking the files that make the public project usable.
+- For script-first repos, a practical public-ready setup is usually better than package-style ceremony: add license, contributor/security docs, issue/PR templates, dependency manifest, and honest lightweight CI, then update README and operations docs so the new files are discoverable.
+
 ## 2026-03-19 (Shared Forex Loss And Soft Stops)
 
 - In a high-ADX, risk-off regime, full basket flattening on soft loss stops tends to realize the worst part of the move. Trimming newer expansion legs back to the oldest hedge pair preserves more recovery potential while still cutting pressure.

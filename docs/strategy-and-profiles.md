@@ -57,7 +57,7 @@ The NAS100 grid bot stays aligned to index market availability instead of the fo
 
 - index volatility is more usable when the underlying cash and futures participation is active
 - high-impact USD events are explicitly blacked out
-- optional pre-news flattening reduces event shock exposure
+- new risk is paused during blackout windows instead of using routine forced flattening as the default operating behavior
 
 ## Current forex profile ranges
 
@@ -109,3 +109,11 @@ The bots support bounded growth controls so size and thresholds can scale with e
 - `GROWTH_EQUITY_LOCK_RATIO`
 
 Keep those controls present when tuning wrappers so scaling behavior stays consistent across the repo.
+
+## Repo note
+
+Repository workflow, contribution guidance, and validation commands now live in:
+
+- `README.md`
+- `CONTRIBUTING.md`
+- `SECURITY.md`

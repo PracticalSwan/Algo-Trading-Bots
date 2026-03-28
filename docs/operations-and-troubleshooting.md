@@ -9,7 +9,7 @@ python eurusd_grid_bot.py
 python nas100_grid_bot.py
 ```
 
-Bots run continuously until interrupted. `Ctrl+C` is intended to shut them down safely.
+Bots run continuously until interrupted. `Ctrl+C` disconnects the script loop cleanly from MT5; it is not documented as a full close-all shortcut.
 
 ### Run multiple bots
 
@@ -33,6 +33,13 @@ Get-Content logs\eurusd_grid_bot_YYYYMMDD.log -Wait -Tail 30
 
 The `logs/` folder is created automatically if it does not exist.
 
+## Install dependencies
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
 ## Repo file roles
 
 | Path pattern | Purpose |
@@ -42,6 +49,9 @@ The `logs/` folder is created automatically if it does not exist.
 | `forex_grid_engine.py` | Shared execution and risk engine for all forex grid wrappers |
 | `nas100_grid_bot.py.template` | Tracked NAS100 grid template |
 | `logs/` | Daily runtime logs |
+| `.github/` | GitHub issue templates, PR template, CI workflow, and workspace skills |
+| `CONTRIBUTING.md` | Local setup and contribution workflow |
+| `SECURITY.md` | Vulnerability reporting and secret-handling guidance |
 
 ## Template workflow
 
@@ -148,7 +158,8 @@ Cause:
 Fix:
 
 ```powershell
-pip install MetaTrader5 pandas numpy
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
 ### MT5 initialization fails
@@ -192,3 +203,33 @@ Typical causes:
 Fix:
 
 - Read the live log first. The reason is usually written there explicitly.
+
+## Contributor validation
+
+Use the same lightweight checks as CI before opening a pull request:
+
+```powershell
+@'
+import py_compile
+
+files = [
+    "daily_loss_scope.py",
+    "forex_grid_engine.py",
+    "eurusd_grid_bot.py.template",
+    "gbpusd_grid_bot.py.template",
+    "usdjpy_grid_bot.py.template",
+    "audusd_grid_bot.py.template",
+    "nzdusd_grid_bot.py.template",
+    "usdcad_grid_bot.py.template",
+    "nas100_grid_bot.py.template",
+    "tests/test_daily_loss_scope.py",
+]
+
+for path in files:
+    py_compile.compile(path, doraise=True)
+
+print(f"Compiled {len(files)} files successfully")
+'@ | python -
+
+python -m unittest tests.test_daily_loss_scope -v
+```
