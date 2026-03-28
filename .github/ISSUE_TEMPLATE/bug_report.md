@@ -13,7 +13,7 @@ Describe the problem clearly.
 ## Affected area
 
 - [ ] README / docs
-- [ ] GitHub workflow / CI
+- [ ] GitHub templates / repo metadata
 - [ ] Shared engine
 - [ ] Forex wrapper template
 - [ ] NAS100 template

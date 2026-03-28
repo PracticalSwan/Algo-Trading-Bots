@@ -48,7 +48,7 @@ Rules:
 
 ## Validation
 
-Run the same lightweight checks used by CI before opening a pull request:
+Run these lightweight local checks before opening a pull request:
 
 ```powershell
 @'

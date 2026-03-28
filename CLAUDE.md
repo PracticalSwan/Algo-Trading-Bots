@@ -119,7 +119,7 @@ Exness_Bot/
 |-- nas100_grid_bot.py     # Conservative NAS100 grid bot with news blackout (gitignored)
 |-- nas100_grid_bot.py.template # NAS100 grid bot template WITHOUT credentials (tracked)
 |-- tests/                 # Lightweight regression tests
-|-- .github/               # GitHub templates, workflows, and workspace skill files
+|-- .github/               # GitHub templates and workspace skill files
 |-- requirements.txt       # Runtime dependency manifest
 |-- .gitignore             # Excludes grid bots with credentials from version control
 |-- lessons.md             # Persistent lessons learned from implementation work

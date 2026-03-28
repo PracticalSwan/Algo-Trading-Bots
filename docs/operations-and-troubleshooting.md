@@ -49,7 +49,7 @@ python -m pip install -r requirements.txt
 | `forex_grid_engine.py` | Shared execution and risk engine for all forex grid wrappers |
 | `nas100_grid_bot.py.template` | Tracked NAS100 grid template |
 | `logs/` | Daily runtime logs |
-| `.github/` | GitHub issue templates, PR template, CI workflow, and workspace skills |
+| `.github/` | GitHub issue templates, PR template, and workspace skills |
 | `CONTRIBUTING.md` | Local setup and contribution workflow |
 | `SECURITY.md` | Vulnerability reporting and secret-handling guidance |
 
@@ -206,7 +206,7 @@ Fix:
 
 ## Contributor validation
 
-Use the same lightweight checks as CI before opening a pull request:
+Use these lightweight local checks before opening a pull request:
 
 ```powershell
 @'

@@ -10,13 +10,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - Added `LICENSE` with MIT terms for `Sithu Win San`.
 - Added repository hygiene and contributor files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CODEOWNERS`, `.editorconfig`, `.gitattributes`, and `requirements.txt`.
-- Added GitHub issue templates, pull request template, and a lightweight Windows CI workflow under `.github/`.
+- Added GitHub issue templates and a pull request template under `.github/`.
 - Added approved design and implementation plan docs for the repo-kit work under `docs/plans/`.
 
 ### Changed
 - Updated `.gitignore` so `.github/` is no longer ignored and added common virtual-environment/cache entries.
 - Refreshed `README.md`, `CLAUDE.md`, and supporting docs to reflect the current credential-template workflow, validation steps, and repository maintenance surface.
-- Hardened CI and local validation guidance to use unittest discovery, and added `tests/__init__.py` so the repository test package is not shadowed by unrelated top-level `tests` packages on CI runners.
+- Hardened local validation guidance to use unittest discovery, and added `tests/__init__.py` so the repository test package is not shadowed by unrelated top-level `tests` packages.
+
+### Removed
+- Removed the GitHub Actions CI workflow because this repository now relies on manual local verification instead of hosted automation.
 
 ## [1.1] - 2026-03-20
 

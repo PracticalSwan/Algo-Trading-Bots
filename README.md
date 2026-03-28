@@ -118,7 +118,7 @@ NAS100 sits outside those forex bands with conservative `USTECm` tuning:
 
 ## Development and verification
 
-This repo includes a lightweight Windows GitHub Actions workflow that checks syntax/compile health and runs `tests/test_daily_loss_scope.py`.
+This repo keeps verification local and lightweight.
 
 You can run the same validation locally:
 
